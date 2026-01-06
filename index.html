@@ -1,86 +1,17 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Itinerary AI</title>
-    <link href="https://fonts.googleapis.com" rel="preconnect" />
-    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-      rel="stylesheet"
-    />
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <script>
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              primary: "#ee8c2b",
-              "primary-hover": "#d97b1f",
-              "background-light": "#f8f7f6",
-              "background-dark": "#16181d",
-              "card-light": "#ffffff",
-              "card-dark": "#1e2126",
-              "text-main": "#1b140d",
-              "text-muted": "#a0a5ad",
-              "border-dark": "#2a2e35",
-            },
-            fontFamily: {
-              sans: ["Plus Jakarta Sans", "sans-serif"],
-              display: ["Plus Jakarta Sans", "sans-serif"],
-            },
-            animation: {
-              fadeIn: "fadeIn 0.5s ease-out",
-            },
-            keyframes: {
-              fadeIn: {
-                "0%": { opacity: "0", transform: "translateY(10px)" },
-                "100%": { opacity: "1", transform: "translateY(0)" },
-              },
-            },
-          },
-        },
-      };
-    </script>
-    <style>
-      .material-symbols-outlined {
-        font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-      }
-      .material-symbols-outlined.filled {
-        font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
-      }
-      body {
-        font-family: "Plus Jakarta Sans", sans-serif;
-      }
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #16181d;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #2a2e35;
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #ee8c2b;
-      }
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
-      }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
-    </style>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Itinerary AI</title>
+  <link href="https://fonts.googleapis.com" rel="preconnect" />
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+    rel="stylesheet" />
+  <!-- Tailwind CSS is now loaded via index.tsx import -->
   <script type="importmap">
 {
   "imports": {
@@ -92,7 +23,11 @@
 }
 </script>
 </head>
-  <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-gray-100 transition-colors duration-200 min-h-screen">
-    <div id="root"></div>
-  </body>
+
+<body
+  class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-gray-100 transition-colors duration-200 min-h-screen">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
 </html>

@@ -36,7 +36,7 @@ const itinerarySchema: Schema = {
                 location: { type: Type.STRING },
                 duration: { type: Type.STRING },
                 imageKeyword: { type: Type.STRING, description: "A short English search term for an image of this place" },
-                
+
                 // Detailed Guides
                 tips: { type: Type.STRING, description: "Comprehensive guide: ticket booking, best photo spots, hidden gems, pitfalls to avoid." },
                 transport: { type: Type.STRING, description: "Detailed transport instruction: specific bus/train lines, walking directions, cost." },
@@ -77,7 +77,7 @@ export const generateItinerary = async (
   specialRequests: string,
   language: string = 'en'
 ): Promise<Itinerary> => {
-  
+
   const langName = language === 'zh-TW' ? 'Traditional Chinese (繁體中文)' : language === 'zh-CN' ? 'Simplified Chinese (简体中文)' : 'English';
 
   const prompt = `
@@ -106,7 +106,8 @@ export const generateItinerary = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
+      // AI Model: using gemini-2.5-flash (via SDK)
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -115,33 +116,34 @@ export const generateItinerary = async (
     });
 
     let text = response.text || "{}";
+
     console.log("Gemini Response:", text);
-    
+
     // Clean up markdown code blocks if present (Gemini sometimes wraps JSON in ```json ... ```)
     if (text.startsWith("```")) {
-        text = text.replace(/^```json\s?/, "").replace(/^```\s?/, "").replace(/```$/, "");
+      text = text.replace(/^```json\s?/, "").replace(/^```\s?/, "").replace(/```$/, "");
     }
 
     let data;
     try {
-        data = JSON.parse(text);
+      data = JSON.parse(text);
     } catch (e) {
-        console.error("Failed to parse JSON:", e);
-        // Attempt a simpler regex cleanup if parse failed
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            try {
-                data = JSON.parse(jsonMatch[0]);
-            } catch (e2) {
-                 throw new Error("Invalid JSON response from AI");
-            }
-        } else {
-            throw new Error("Invalid JSON response from AI");
+      console.error("Failed to parse JSON:", e);
+      // Attempt a simpler regex cleanup if parse failed
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          data = JSON.parse(jsonMatch[0]);
+        } catch (e2) {
+          throw new Error("Invalid JSON response from AI");
         }
+      } else {
+        throw new Error("Invalid JSON response from AI");
+      }
     }
 
     if (!data.days || !Array.isArray(data.days)) {
-        throw new Error("Invalid itinerary structure: missing days");
+      throw new Error("Invalid itinerary structure: missing days");
     }
 
     // Augment with local data/ids
@@ -155,10 +157,10 @@ export const generateItinerary = async (
         ...d,
         date: "2024-01-01", // In a real app, calculate actual dates
         activities: (d.activities || []).map((a: any) => ({
-            ...a,
-            // Only generate image URL if we really need it, but prompt says "don't use images in list".
-            // We keep it for data completeness but UI will hide it.
-            imageUrl: a.imageKeyword ? getTravelImage(a.imageKeyword) : null
+          ...a,
+          // Only generate image URL if we really need it, but prompt says "don't use images in list".
+          // We keep it for data completeness but UI will hide it.
+          imageUrl: a.imageKeyword ? getTravelImage(a.imageKeyword) : null
         }))
       })),
       coverImage: getTravelImage(destination + " scenic landscape"),
@@ -177,8 +179,17 @@ export const generateItinerary = async (
     };
 
     return itinerary;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini generation error:", error);
-    throw new Error("Failed to generate itinerary. Please try again.");
+    const errorMessage = error?.message || "Unknown error";
+    if (errorMessage.includes("API key")) {
+      throw new Error("Invalid or missing API Key. Please check your .env.local file.");
+    }
+    throw new Error(`Failed to generate itinerary: ${errorMessage}`);
   }
 };
+
+// Check for API key initialization
+if (!process.env.API_KEY) {
+  console.warn("Warning: API_KEY is not set in the environment!");
+}

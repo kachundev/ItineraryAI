@@ -95,6 +95,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
                     <input
                       type="date"
                       value={startDate}
+                      min={new Date().toISOString().split('T')[0]} // Prevent selecting past dates
                       onChange={(e) => {
                         setStartDate(e.target.value);
                         // Reset end date if it becomes invalid

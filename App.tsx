@@ -31,9 +31,9 @@ function AppContent() {
   };
 
   const handleSaveItinerary = (itinerary: Itinerary) => {
-    // This will be handled inside ItineraryDetail or moved to a service call
-    // For now, we just navigate to 'my-trips' which will fetch the new data
-    navigate('my-trips');
+    // Update the selected itinerary state without navigating
+    // This is called when exiting edit mode to sync changes to parent
+    setSelectedItinerary(itinerary);
   };
 
   const renderView = () => {

@@ -80,3 +80,57 @@ create policy "Users can update their own itineraries."
 create policy "Users can delete their own itineraries."
   on itineraries for delete
   using ( auth.uid() = user_id );
+
+-- ===========================================
+-- COMMUNITY FEATURES TABLES
+-- ===========================================
+
+-- Saved itineraries (for saving community trips to "My Trips")
+create table public.itinerary_saves (
+  id uuid not null default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  itinerary_id uuid not null references public.itineraries(id) on delete cascade,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  primary key (id),
+  unique(user_id, itinerary_id)
+);
+
+-- Comments on itineraries
+create table public.comments (
+  id uuid not null default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  itinerary_id uuid not null references public.itineraries(id) on delete cascade,
+  content text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  primary key (id)
+);
+
+-- Enable RLS
+alter table public.itinerary_saves enable row level security;
+alter table public.comments enable row level security;
+
+-- Policies for itinerary_saves
+create policy "Users can view their own saves."
+  on itinerary_saves for select
+  using ( auth.uid() = user_id );
+
+create policy "Users can insert their own saves."
+  on itinerary_saves for insert
+  with check ( auth.uid() = user_id );
+
+create policy "Users can delete their own saves."
+  on itinerary_saves for delete
+  using ( auth.uid() = user_id );
+
+-- Policies for comments
+create policy "Comments are viewable by everyone."
+  on comments for select
+  using ( true );
+
+create policy "Users can insert their own comments."
+  on comments for insert
+  with check ( auth.uid() = user_id );
+
+create policy "Users can delete their own comments."
+  on comments for delete
+  using ( auth.uid() = user_id );

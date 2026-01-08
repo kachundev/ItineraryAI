@@ -16,11 +16,11 @@ export interface Activity {
   duration?: string;
   imageKeyword?: string; // For generating dynamic images
   imageUrl?: string; // Generated URL for the activity image
-  
+
   // New fields for detailed guide
   tips?: string; // Booking, tickets, best time to visit
   transport?: string; // How to get here or get to next spot
-  
+
   // Specific for meals
   restaurantOptions?: RestaurantOption[];
 }
@@ -34,6 +34,7 @@ export interface DayPlan {
 
 export interface Itinerary {
   id: string;
+  userId?: string;
   title: string;
   location: string;
   startDate: string;
@@ -52,6 +53,7 @@ export interface Itinerary {
   rating?: number;
   description?: string;
   generated?: boolean;
+  isPublic?: boolean;
 }
 
 export interface User {
@@ -63,5 +65,19 @@ export interface User {
     trips: number;
     fans: string;
     likes: number;
+  };
+}
+
+export interface Comment {
+  id: string;
+  userId: string;
+  itineraryId: string;
+  content: string;
+  createdAt: string;
+  user?: {
+    id: string;
+    fullName?: string;
+    avatarUrl?: string;
+    email?: string;
   };
 }

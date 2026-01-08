@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Itinerary, Activity, RestaurantOption } from '../types';
+import { Itinerary, Activity, RestaurantOption, DayPlan } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -10,7 +10,13 @@ interface ItineraryDetailProps {
   t: any;
 }
 
-const RestaurantCard = ({ option, index, t }: { option: RestaurantOption, index: number, t: any }) => {
+interface RestaurantCardProps {
+  option: RestaurantOption;
+  index: number;
+  t: any;
+}
+
+const RestaurantCard: React.FC<RestaurantCardProps> = ({ option, index, t }) => {
   const openMap = (e: React.MouseEvent) => {
     e.stopPropagation();
     const query = `${option.name} ${option.cuisine}`;
@@ -53,6 +59,30 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [localItinerary, setLocalItinerary] = useState<Itinerary | null>(null);
+  const [editingActivity, setEditingActivity] = useState<{ dayIndex: number; activityIndex: number } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  // Activity form state
+  const [activityForm, setActivityForm] = useState<Activity>({
+    time: '',
+    title: '',
+    description: '',
+    type: '',
+    location: '',
+    tips: '',
+    transport: ''
+  });
+
+  // Initialize local itinerary when entering edit mode or when itinerary changes
+  React.useEffect(() => {
+    if (itinerary) {
+      setLocalItinerary(JSON.parse(JSON.stringify(itinerary))); // Deep clone
+    }
+  }, [itinerary]);
+
   React.useEffect(() => {
     setIsSaved(false);
   }, [itinerary]);
@@ -66,11 +96,132 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
     );
   }
 
-  const currentDay = itinerary.days[activeDay];
+  // Use localItinerary for display when in edit mode, otherwise use original
+  const displayItinerary = isEditMode && localItinerary ? localItinerary : itinerary;
+  const currentDay = displayItinerary.days[activeDay];
 
   const handleOpenMap = (location: string, title: string) => {
     const query = location || title;
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, '_blank');
+  };
+
+  // Persist changes to Supabase
+  const persistChanges = async (updatedItinerary: Itinerary) => {
+    if (!user || !updatedItinerary.id) return;
+
+    try {
+      setIsUpdating(true);
+
+      const content = {
+        generated: updatedItinerary.generated,
+        days: updatedItinerary.days,
+        tags: updatedItinerary.tags,
+        budget: updatedItinerary.budget,
+        rating: updatedItinerary.rating,
+        coverImage: updatedItinerary.coverImage,
+        author: updatedItinerary.author,
+        description: updatedItinerary.description
+      };
+
+      const { error } = await supabase
+        .from('itineraries')
+        .update({ content })
+        .eq('id', updatedItinerary.id);
+
+      if (error) throw error;
+
+      // Note: Don't call onSave here to avoid navigation - we want to stay on this page
+    } catch (error) {
+      console.error('Error updating itinerary:', error);
+      alert('Failed to save changes.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Open edit modal for an activity
+  const handleEditActivity = (dayIndex: number, activityIndex: number) => {
+    if (!localItinerary) return;
+    const activity = localItinerary.days[dayIndex].activities[activityIndex];
+    setActivityForm({ ...activity });
+    setEditingActivity({ dayIndex, activityIndex });
+  };
+
+  // Open modal for adding new activity
+  const handleAddActivity = (dayIndex: number) => {
+    setActivityForm({
+      time: '',
+      title: '',
+      description: '',
+      type: 'sightseeing',
+      location: '',
+      tips: '',
+      transport: ''
+    });
+    setEditingActivity({ dayIndex, activityIndex: -1 }); // -1 indicates new activity
+  };
+
+  // Save activity (edit or add new)
+  const handleSaveActivity = async () => {
+    if (!localItinerary || !editingActivity) return;
+
+    const { dayIndex, activityIndex } = editingActivity;
+    const updatedItinerary = JSON.parse(JSON.stringify(localItinerary));
+
+    if (activityIndex === -1) {
+      // Adding new activity
+      updatedItinerary.days[dayIndex].activities.push(activityForm);
+    } else {
+      // Editing existing activity
+      updatedItinerary.days[dayIndex].activities[activityIndex] = activityForm;
+    }
+
+    setLocalItinerary(updatedItinerary);
+    setEditingActivity(null);
+    await persistChanges(updatedItinerary);
+  };
+
+  // Delete an activity
+  const handleDeleteActivity = async (dayIndex: number, activityIndex: number) => {
+    if (!localItinerary) return;
+    if (!window.confirm(t.confirm_delete_activity)) return;
+
+    const updatedItinerary = JSON.parse(JSON.stringify(localItinerary));
+    updatedItinerary.days[dayIndex].activities.splice(activityIndex, 1);
+
+    setLocalItinerary(updatedItinerary);
+    await persistChanges(updatedItinerary);
+  };
+
+  // Delete an entire day
+  const handleDeleteDay = async (dayIndex: number) => {
+    if (!localItinerary) return;
+    if (!window.confirm(t.confirm_delete_day)) return;
+
+    const updatedItinerary = JSON.parse(JSON.stringify(localItinerary));
+    updatedItinerary.days.splice(dayIndex, 1);
+
+    // Renumber remaining days
+    updatedItinerary.days.forEach((day: DayPlan, idx: number) => {
+      day.day = idx + 1;
+    });
+
+    // Adjust activeDay if needed
+    if (activeDay >= updatedItinerary.days.length) {
+      setActiveDay(Math.max(0, updatedItinerary.days.length - 1));
+    }
+
+    setLocalItinerary(updatedItinerary);
+    await persistChanges(updatedItinerary);
+  };
+
+  // Toggle edit mode and sync changes to parent when exiting
+  const handleToggleEditMode = () => {
+    if (isEditMode && localItinerary) {
+      // Exiting edit mode - sync local changes to parent so UI updates
+      onSave(localItinerary);
+    }
+    setIsEditMode(!isEditMode);
   };
 
   const handleSave = async () => {
@@ -208,8 +359,8 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                     key={day.day}
                     onClick={() => setActiveDay(index)}
                     className={`flex-shrink-0 px-6 py-2.5 rounded-full font-bold text-sm transition-all duration-200 whitespace-nowrap ${activeDay === index
-                        ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-105'
-                        : 'bg-white dark:bg-[#1e2126] text-slate-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2e35] hover:border-primary dark:hover:border-primary hover:text-primary'
+                      ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-105'
+                      : 'bg-white dark:bg-[#1e2126] text-slate-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2e35] hover:border-primary dark:hover:border-primary hover:text-primary'
                       }`}
                   >
                     {t.day_prefix}{day.day}{t.day_suffix}
@@ -222,9 +373,19 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
             <div className="space-y-8 min-h-[500px]">
               <div className="flex items-center gap-3 animate-fadeIn">
                 <span className="material-symbols-outlined text-2xl text-primary">wb_sunny</span>
-                <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white flex-1">
                   {t.day_prefix}{currentDay.day}{t.day_suffix}: {currentDay.title}
                 </h2>
+                {isEditMode && displayItinerary.days.length > 1 && (
+                  <button
+                    onClick={() => handleDeleteDay(activeDay)}
+                    className="flex items-center gap-2 px-3 py-2 bg-red-100 hover:bg-red-500 text-red-500 hover:text-white rounded-lg transition-colors text-sm font-bold"
+                    title={t.delete_day}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                    {t.delete_day}
+                  </button>
+                )}
               </div>
 
               <div className="relative pl-8 border-l-2 border-gray-200 dark:border-[#2a2e35] space-y-10">
@@ -235,7 +396,27 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                     <div key={idx} className="relative group animate-fadeIn" style={{ animationDelay: `${idx * 100}ms` }}>
                       <div className={`absolute -left-[9px] top-0 size-4 rounded-full ring-4 ring-background-light dark:ring-background-dark transition-colors ${isMeal ? 'bg-green-500' : 'bg-primary'}`}></div>
 
-                      <div className="bg-white dark:bg-card-dark border border-gray-100 dark:border-[#2a2e35] rounded-xl p-5 hover:border-primary/30 hover:shadow-lg transition-all duration-300">
+                      <div className="bg-white dark:bg-card-dark border border-gray-100 dark:border-[#2a2e35] rounded-xl p-5 hover:border-primary/30 hover:shadow-lg transition-all duration-300 relative">
+
+                        {/* Edit Mode Action Buttons */}
+                        {isEditMode && (
+                          <div className="absolute top-3 right-3 flex gap-2 z-10">
+                            <button
+                              onClick={() => handleEditActivity(activeDay, idx)}
+                              className="p-2 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-lg transition-colors"
+                              title={t.edit_activity}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">edit</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteActivity(activeDay, idx)}
+                              className="p-2 bg-red-100 hover:bg-red-500 text-red-500 hover:text-white rounded-lg transition-colors"
+                              title={t.delete_activity}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                          </div>
+                        )}
 
                         {/* Meal Section */}
                         {isMeal && activity.restaurantOptions ? (
@@ -327,6 +508,20 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                     </div>
                   )
                 })}
+
+                {/* Add Activity Button */}
+                {isEditMode && (
+                  <div className="relative">
+                    <div className="absolute -left-[9px] top-0 size-4 rounded-full ring-4 ring-background-light dark:ring-background-dark bg-gray-300 dark:bg-gray-600"></div>
+                    <button
+                      onClick={() => handleAddActivity(activeDay)}
+                      className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-gray-300 dark:border-[#2a2e35] hover:border-primary dark:hover:border-primary rounded-xl text-slate-500 dark:text-gray-400 hover:text-primary transition-colors"
+                    >
+                      <span className="material-symbols-outlined">add</span>
+                      {t.add_activity}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -341,6 +536,26 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                   <span className={`material-symbols-outlined ${!isSaved && 'group-hover:animate-bounce'}`}>{isSaved ? 'check' : 'bookmark_add'}</span>
                   {isSaved ? t.saved : t.save_trip}
                 </button>
+
+                {/* Edit Mode Toggle */}
+                {user && itinerary.id && (
+                  <button
+                    onClick={handleToggleEditMode}
+                    disabled={isUpdating}
+                    className={`w-full font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 mb-4 ${isEditMode
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-slate-100 dark:bg-[#2a2e35] hover:bg-slate-200 dark:hover:bg-[#32363e] text-slate-700 dark:text-gray-300'
+                      }`}
+                  >
+                    {isUpdating ? (
+                      <span className="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[20px]">{isEditMode ? 'check' : 'edit'}</span>
+                    )}
+                    {isEditMode ? t.exit_edit_mode : t.enter_edit_mode}
+                  </button>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <button className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300 font-bold text-sm transition-colors">
                     <span className="material-symbols-outlined text-[20px] text-red-500">favorite</span> {t.like}
@@ -373,6 +588,109 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
           </div>
         </div>
       </div>
+
+      {/* Activity Edit Modal */}
+      {editingActivity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-[#1e2126] rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-gray-200 dark:border-[#2a2e35]">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-6">
+              {editingActivity.activityIndex === -1 ? t.add_activity : t.edit_activity}
+            </h2>
+
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-500 dark:text-gray-400 mb-1">{t.activity_time}</label>
+                  <input
+                    type="text"
+                    value={activityForm.time}
+                    onChange={(e) => setActivityForm({ ...activityForm, time: e.target.value })}
+                    placeholder="e.g., 09:00"
+                    className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-500 dark:text-gray-400 mb-1">{t.activity_type}</label>
+                  <input
+                    type="text"
+                    value={activityForm.type}
+                    onChange={(e) => setActivityForm({ ...activityForm, type: e.target.value })}
+                    placeholder="e.g., sightseeing"
+                    className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-500 dark:text-gray-400 mb-1">{t.activity_title}</label>
+                <input
+                  type="text"
+                  value={activityForm.title}
+                  onChange={(e) => setActivityForm({ ...activityForm, title: e.target.value })}
+                  className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-500 dark:text-gray-400 mb-1">{t.activity_description}</label>
+                <textarea
+                  rows={3}
+                  value={activityForm.description}
+                  onChange={(e) => setActivityForm({ ...activityForm, description: e.target.value })}
+                  className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-500 dark:text-gray-400 mb-1">{t.activity_location}</label>
+                <input
+                  type="text"
+                  value={activityForm.location || ''}
+                  onChange={(e) => setActivityForm({ ...activityForm, location: e.target.value })}
+                  className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-500 dark:text-gray-400 mb-1">{t.activity_tips}</label>
+                <textarea
+                  rows={2}
+                  value={activityForm.tips || ''}
+                  onChange={(e) => setActivityForm({ ...activityForm, tips: e.target.value })}
+                  className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-500 dark:text-gray-400 mb-1">{t.activity_transport}</label>
+                <input
+                  type="text"
+                  value={activityForm.transport || ''}
+                  onChange={(e) => setActivityForm({ ...activityForm, transport: e.target.value })}
+                  className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-8">
+              <button
+                onClick={() => setEditingActivity(null)}
+                className="px-5 py-2.5 rounded-xl font-bold text-slate-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2a2e35] transition-colors"
+              >
+                {t.cancel}
+              </button>
+              <button
+                onClick={handleSaveActivity}
+                disabled={isUpdating}
+                className="px-5 py-2.5 rounded-xl font-bold bg-primary hover:bg-primary-hover text-white shadow-lg shadow-primary/20 transition-all flex items-center gap-2"
+              >
+                {isUpdating && <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>}
+                {t.save_changes}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

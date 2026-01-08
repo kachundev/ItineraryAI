@@ -8,9 +8,13 @@ interface MyItinerariesProps {
   t: any;
 }
 
+type Tab = 'upcoming' | 'past' | 'drafts' | 'favorites';
+
 export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>('upcoming');
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
+  const [savedItineraries, setSavedItineraries] = useState<Itinerary[]>([]);
   const [loading, setLoading] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingTrip, setEditingTrip] = useState<Itinerary | null>(null);
@@ -27,16 +31,20 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      // Fetch owned itineraries
+      const { data: ownedData, error: ownedError } = await supabase
         .from('itineraries')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (ownedError) throw ownedError;
 
-      if (data) {
-        const mappedItineraries: Itinerary[] = data.map(item => ({
+      if (ownedData) {
+        const mappedItineraries: Itinerary[] = ownedData.map(item => ({
           id: item.id,
+          userId: item.user_id,
           title: item.title,
           location: item.destination,
           startDate: item.start_date,
@@ -50,6 +58,50 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
         }));
         setItineraries(mappedItineraries);
       }
+
+      // Fetch saved itineraries
+      const { data: savedData, error: savedError } = await supabase
+        .from('itinerary_saves')
+        .select(`
+          itinerary_id,
+          itineraries:itinerary_id (
+            *,
+            profiles:user_id (
+              full_name,
+              avatar_url
+            )
+          )
+        `)
+        .eq('user_id', user.id);
+
+      if (savedError) throw savedError;
+
+      if (savedData) {
+        const mappedSaved: Itinerary[] = savedData
+          .filter((item: any) => item.itineraries) // Filter out nulls if any
+          .map((item: any) => {
+            const it = item.itineraries;
+            return {
+              id: it.id,
+              userId: it.user_id,
+              title: it.title,
+              location: it.destination,
+              startDate: it.start_date,
+              endDate: it.end_date,
+              isPublic: it.is_public,
+              likes: it.likes,
+              ...it.content,
+              author: {
+                name: it.profiles?.full_name || 'Unknown',
+                avatar: it.profiles?.avatar_url || '',
+              },
+              id: it.id,
+              title: it.title,
+            };
+          });
+        setSavedItineraries(mappedSaved);
+      }
+
     } catch (error) {
       console.error('Error fetching itineraries:', error);
     } finally {
@@ -103,15 +155,63 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
     }
   };
 
+  const handleRemoveSavedClick = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!user) return;
+
+    if (window.confirm("Remove from saved trips?")) {
+      try {
+        const { error } = await supabase
+          .from('itinerary_saves')
+          .delete()
+          .match({ user_id: user.id, itinerary_id: id });
+
+        if (error) throw error;
+
+        setSavedItineraries(prev => prev.filter(i => i.id !== id));
+      } catch (error) {
+        console.error('Error removing saved itinerary:', error);
+        alert('Failed to remove saved itinerary');
+      }
+    }
+  };
+
+  const handlePublishToggle = async (e: React.MouseEvent, trip: Itinerary) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+
+    try {
+      const newStatus = !trip.isPublic;
+      const { error } = await supabase
+        .from('itineraries')
+        .update({ is_public: newStatus })
+        .eq('id', trip.id);
+
+      if (error) throw error;
+
+      setItineraries(prev => prev.map(i =>
+        i.id === trip.id ? { ...i, isPublic: newStatus } : i
+      ));
+    } catch (error) {
+      console.error('Error updating publish status:', error);
+      alert('Failed to update status');
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!editingTrip) return;
 
     try {
       const updatedContent = {
-        ...editingTrip,
+        ...editingTrip, // This spreads all content fields including days, tags etc from the itinerary object
         title: editTitle,
         description: editDescription
       };
+
+      // We need to be careful not to include non-content fields in the content column if they are duplicate,
+      // but for now keeping it simple as per original implementation logic where we might be storing everything in content json
+      // Ideally 'content' should only have JSON structure, not top level columns.
+      // Let's ensure we are just updating the title column and content column
 
       const { error } = await supabase
         .from('itineraries')
@@ -135,6 +235,48 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
       alert('Failed to update itinerary');
     }
   };
+
+  // Filter itineraries based on active tab
+  const getFilteredItineraries = () => {
+    if (activeTab === 'favorites') {
+      return savedItineraries;
+    }
+
+    const now = new Date();
+    return itineraries.filter(trip => {
+      const endDate = new Date(trip.endDate);
+
+      if (activeTab === 'upcoming') {
+        return endDate >= now && trip.status !== 'draft';
+      } else if (activeTab === 'past') {
+        return endDate < now && trip.status !== 'draft';
+      } else if (activeTab === 'drafts') {
+        return trip.status === 'draft'; // note: purely frontend status logic if we had it implementing status field properly
+      }
+      return true;
+    });
+  };
+
+  // Fallback if no status field used yet, just show all in upcoming for now or split by date
+  // Since we don't strictly use 'status' column in DB yet (it's in JSON), let's simplify logic:
+  const displayItineraries = (() => {
+    if (activeTab === 'favorites') return savedItineraries;
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); // Normalize today
+
+    return itineraries.filter(trip => {
+      if (!trip.endDate) return activeTab === 'upcoming'; // No date = upcoming/draft
+      const end = new Date(trip.endDate);
+
+      if (activeTab === 'past') return end < now;
+      // Default everything else to upcoming/drafts bucket for now
+      // IF we want to separate drafts, we need a way to identify them. 
+      // Assuming all created trips are 'upcoming' unless date passed
+      if (activeTab === 'upcoming' || activeTab === 'drafts') return end >= now;
+      return false;
+    });
+  })();
 
   if (loading) {
     return (
@@ -167,43 +309,59 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
 
       <div className="mb-8 border-b border-gray-200 dark:border-[#2a2e35]">
         <div className="flex gap-8 overflow-x-auto no-scrollbar">
-          <button className="pb-3 border-b-[3px] border-primary px-2 text-primary font-bold text-sm tracking-wide">{t.upcoming}</button>
-          <button className="pb-3 border-b-[3px] border-transparent hover:border-primary/30 px-2 text-slate-500 dark:text-gray-400 font-bold text-sm tracking-wide transition-all">{t.past_trips}</button>
-          <button className="pb-3 border-b-[3px] border-transparent hover:border-primary/30 px-2 text-slate-500 dark:text-gray-400 font-bold text-sm tracking-wide transition-all">{t.drafts}</button>
-          <button className="pb-3 border-b-[3px] border-transparent hover:border-primary/30 px-2 text-slate-500 dark:text-gray-400 font-bold text-sm tracking-wide transition-all">{t.favorites}</button>
+          {(['upcoming', 'past', 'drafts', 'favorites'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-3 border-b-[3px] px-2 font-bold text-sm tracking-wide transition-all ${activeTab === tab
+                  ? 'border-primary text-primary'
+                  : 'border-transparent hover:border-primary/30 text-slate-500 dark:text-gray-400'
+                }`}
+            >
+              {t[tab === 'past' ? 'past_trips' : tab]}
+            </button>
+          ))}
         </div>
       </div>
 
-      {itineraries.length === 0 ? (
+      {displayItineraries.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="bg-gray-100 dark:bg-[#2a2e35] p-6 rounded-full mb-6">
-            <span className="material-symbols-outlined text-5xl text-gray-400">flight_takeoff</span>
+            <span className="material-symbols-outlined text-5xl text-gray-400">
+              {activeTab === 'favorites' ? 'favorite_border' : 'flight_takeoff'}
+            </span>
           </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No trips found</h2>
-          <p className="text-slate-500 dark:text-gray-400 mb-6">You haven't planned any trips yet.</p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+            {activeTab === 'favorites' ? 'No saved trips' : 'No trips found'}
+          </h2>
+          <p className="text-slate-500 dark:text-gray-400 mb-6">
+            {activeTab === 'favorites' ? 'Go to Explore to find and save trips!' : "You haven't planned any trips yet."}
+          </p>
           <button
-            onClick={() => onNavigate('home')}
+            onClick={() => onNavigate(activeTab === 'favorites' ? 'explore' : 'home')}
             className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors shadow-lg shadow-primary/20"
           >
-            {t.create_new_trip}
+            {activeTab === 'favorites' ? 'Explore Itineraries' : t.create_new_trip}
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Create New Card */}
-          <button
-            onClick={() => onNavigate('home')}
-            className="group flex flex-col items-center justify-center bg-white dark:bg-[#1e2126] rounded-xl overflow-hidden border-2 border-dashed border-gray-300 dark:border-[#2a2e35] hover:border-primary dark:hover:border-primary transition-all duration-300 min-h-[400px]"
-          >
-            <div className="size-16 rounded-full bg-primary/10 group-hover:bg-primary flex items-center justify-center mb-4 transition-colors">
-              <span className="material-symbols-outlined text-4xl text-primary group-hover:text-white transition-colors">add</span>
-            </div>
-            <span className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t.create_new_trip}</span>
-            <p className="text-slate-500 dark:text-gray-400 text-sm max-w-[200px] text-center">{t.plan_ai_subtitle}</p>
-          </button>
+          {/* Create New Card - Only show in Upcoming/Drafts */}
+          {(activeTab === 'upcoming' || activeTab === 'drafts') && (
+            <button
+              onClick={() => onNavigate('home')}
+              className="group flex flex-col items-center justify-center bg-white dark:bg-[#1e2126] rounded-xl overflow-hidden border-2 border-dashed border-gray-300 dark:border-[#2a2e35] hover:border-primary dark:hover:border-primary transition-all duration-300 min-h-[400px]"
+            >
+              <div className="size-16 rounded-full bg-primary/10 group-hover:bg-primary flex items-center justify-center mb-4 transition-colors">
+                <span className="material-symbols-outlined text-4xl text-primary group-hover:text-white transition-colors">add</span>
+              </div>
+              <span className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t.create_new_trip}</span>
+              <p className="text-slate-500 dark:text-gray-400 text-sm max-w-[200px] text-center">{t.plan_ai_subtitle}</p>
+            </button>
+          )}
 
-          {/* Render Saved Itineraries */}
-          {itineraries.map((trip) => (
+          {/* Render Itineraries */}
+          {displayItineraries.map((trip) => (
             <div key={trip.id} className="group flex flex-col bg-white dark:bg-[#1e2126] rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2e35] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <div className="relative h-48 w-full overflow-hidden">
                 {trip.generated && (
@@ -212,11 +370,15 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
                     {t.ai_generated}
                   </div>
                 )}
-                <div className="absolute top-3 right-3 z-10">
-                  <button className="bg-black/20 hover:bg-black/40 text-white rounded-full p-1.5 backdrop-blur-sm transition-colors">
-                    <span className="material-symbols-outlined text-[20px]">favorite</span>
-                  </button>
-                </div>
+
+                {/* Public Status Badge */}
+                {activeTab !== 'favorites' && (
+                  <div className={`absolute top-3 right-3 z-10 px-2.5 py-1 rounded-full backdrop-blur-sm text-xs font-bold flex items-center gap-1 shadow-sm ${trip.isPublic ? 'bg-green-500 text-white' : 'bg-gray-800/80 text-gray-200'}`}>
+                    <span className="material-symbols-outlined text-[14px]">{trip.isPublic ? 'public' : 'lock'}</span>
+                    {trip.isPublic ? t.published_status : t.private_status}
+                  </div>
+                )}
+
                 <img
                   src={trip.coverImage || 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=2070&auto=format&fit=crop'}
                   alt={trip.title}
@@ -234,25 +396,52 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
                       <span className="material-symbols-outlined">more_vert</span>
                     </button>
                     {openMenuId === trip.id && (
-                      <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-[#25282e] rounded-lg shadow-xl border border-gray-100 dark:border-[#32363e] overflow-hidden z-20 animate-fadeIn">
-                        <button
-                          onClick={(e) => handleEditClick(e, trip)}
-                          className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2e35] flex items-center gap-2"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">edit</span>
-                          {t.edit_trip}
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteClick(e, trip.id)}
-                          className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">delete</span>
-                          {t.delete_trip}
-                        </button>
+                      <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#25282e] rounded-lg shadow-xl border border-gray-100 dark:border-[#32363e] overflow-hidden z-20 animate-fadeIn">
+                        {activeTab === 'favorites' ? (
+                          <button
+                            onClick={(e) => handleRemoveSavedClick(e, trip.id)}
+                            className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">bookmark_remove</span>
+                            Remove
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={(e) => handlePublishToggle(e, trip)}
+                              className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:hover:bg-[#2a2e35] flex items-center gap-2 ${trip.isPublic ? 'text-amber-600' : 'text-green-600'}`}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">{trip.isPublic ? 'unpublished' : 'public'}</span>
+                              {trip.isPublic ? t.unpublish : t.publish}
+                            </button>
+                            <button
+                              onClick={(e) => handleEditClick(e, trip)}
+                              className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2e35] flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">edit</span>
+                              {t.edit_trip}
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteClick(e, trip.id)}
+                              className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                              {t.delete_trip}
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
+
+                {activeTab === 'favorites' && trip.author && (
+                  <div className="flex items-center gap-2 mb-3">
+                    <img src={trip.author.avatar || 'https://i.pravatar.cc/150'} alt={trip.author.name} className="size-6 rounded-full" />
+                    <span className="text-xs font-bold text-slate-500 dark:text-gray-400">by {trip.author.name}</span>
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-2 mb-4">
                   <div className="flex items-center gap-2 text-slate-500 dark:text-gray-400 text-sm">
                     <span className="material-symbols-outlined text-[18px] text-primary">calendar_month</span>
@@ -289,7 +478,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* Edit Modal - Same as before */}
       {editingTrip && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#1e2126] rounded-2xl w-full max-w-lg p-6 shadow-2xl border border-gray-200 dark:border-[#2a2e35]">

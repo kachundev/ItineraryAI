@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ExploreProps {
   onNavigate: (view: any, data?: any) => void;
@@ -8,12 +9,132 @@ interface ExploreProps {
 }
 
 export default function Explore({ onNavigate, t }: ExploreProps) {
+  const { user } = useAuth();
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchPublicItineraries();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserSavesAndLikes();
+    }
+  }, [user]);
+
+  const fetchUserSavesAndLikes = async () => {
+    if (!user) return;
+
+    const { data: saves } = await supabase
+      .from('itinerary_saves')
+      .select('itinerary_id')
+      .eq('user_id', user.id);
+
+    if (saves) {
+      setSavedIds(new Set(saves.map(s => s.itinerary_id)));
+    }
+
+    const { data: likes } = await supabase
+      .from('itinerary_likes')
+      .select('itinerary_id')
+      .eq('user_id', user.id);
+
+    if (likes) {
+      setLikedIds(new Set(likes.map(l => l.itinerary_id)));
+    }
+  };
+
+  const handleSaveToggle = async (e: React.MouseEvent, itinerary: Itinerary) => {
+    e.stopPropagation();
+    if (!user) {
+      alert(t.login_to_save);
+      return;
+    }
+
+    const isSaved = savedIds.has(itinerary.id);
+
+    // For copy-based saves, we can only add (not toggle delete since it's a copy)
+    if (isSaved) {
+      alert(t.already_saved || 'This itinerary has already been copied to your trips!');
+      return;
+    }
+
+    try {
+      // Create a full copy of the itinerary for the user
+      const content = {
+        generated: itinerary.generated,
+        days: itinerary.days,
+        tags: itinerary.tags,
+        budget: itinerary.budget,
+        rating: itinerary.rating,
+        coverImage: itinerary.coverImage,
+        description: itinerary.description,
+        copiedFrom: {
+          itineraryId: itinerary.id,
+          authorName: itinerary.author?.name,
+          copiedAt: new Date().toISOString()
+        }
+      };
+
+      const { error } = await supabase
+        .from('itineraries')
+        .insert({
+          user_id: user.id,
+          title: itinerary.title,
+          destination: itinerary.location,
+          start_date: itinerary.startDate,
+          end_date: itinerary.endDate,
+          content,
+          is_public: false
+        });
+
+      if (error) throw error;
+
+      setSavedIds(prev => new Set(prev).add(itinerary.id));
+      alert(t.saved_success || 'Itinerary copied to your trips!');
+    } catch (error) {
+      console.error('Error copying itinerary:', error);
+      alert(t.save_error || 'Failed to save itinerary');
+    }
+  };
+
+  const handleLikeToggle = async (e: React.MouseEvent, itineraryId: string) => {
+    e.stopPropagation();
+    if (!user) {
+      alert(t.login_to_comment);
+      return;
+    }
+
+    const isLiked = likedIds.has(itineraryId);
+
+    if (isLiked) {
+      await supabase
+        .from('itinerary_likes')
+        .delete()
+        .match({ user_id: user.id, itinerary_id: itineraryId });
+      setLikedIds(prev => {
+        const next = new Set(prev);
+        next.delete(itineraryId);
+        return next;
+      });
+      setItineraries(prev => prev.map(it =>
+        it.id === itineraryId ? { ...it, likes: Math.max(0, (it.likes || 0) - 1) } : it
+      ));
+      await supabase.rpc('decrement_likes', { itinerary_id: itineraryId });
+    } else {
+      await supabase
+        .from('itinerary_likes')
+        .insert({ user_id: user.id, itinerary_id: itineraryId });
+      setLikedIds(prev => new Set(prev).add(itineraryId));
+      setItineraries(prev => prev.map(it =>
+        it.id === itineraryId ? { ...it, likes: (it.likes || 0) + 1 } : it
+      ));
+      await supabase.rpc('increment_likes', { itinerary_id: itineraryId });
+    }
+  };
 
   const fetchPublicItineraries = async () => {
     try {
@@ -35,6 +156,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
 
       if (data) {
         const mappedItineraries: Itinerary[] = data.map(item => ({
+          ...item.content,
           id: item.id,
           userId: item.user_id,
           title: item.title,
@@ -43,14 +165,10 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
           endDate: item.end_date,
           isPublic: item.is_public,
           likes: item.likes || 0,
-          ...item.content,
           author: {
             name: item.profiles?.full_name || 'Anonymous',
             avatar: item.profiles?.avatar_url || `https://i.pravatar.cc/150?u=${item.user_id}`,
           },
-          // Preserve ID and title from top level
-          id: item.id,
-          title: item.title,
         }));
         setItineraries(mappedItineraries);
       }
@@ -196,9 +314,19 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
                         <span className="text-[10px] text-slate-500 dark:text-gray-500">{item.startDate}</span>
                       </div>
                       <div className="ml-auto flex items-center gap-3 text-slate-400 dark:text-gray-500">
-                        <button className="flex items-center gap-1 hover:text-red-500 transition-colors group/heart" onClick={(e) => e.stopPropagation()}>
-                          <span className="material-symbols-outlined text-[18px] group-hover/heart:fill-1">favorite</span>
+                        <button
+                          className={`flex items-center gap-1 transition-colors group/heart ${likedIds.has(item.id) ? 'text-red-500' : 'hover:text-red-500'}`}
+                          onClick={(e) => handleLikeToggle(e, item.id)}
+                        >
+                          <span className={`material-symbols-outlined text-[18px] ${likedIds.has(item.id) ? 'fill-1' : 'group-hover/heart:fill-1'}`}>favorite</span>
                           <span className="text-xs font-medium">{item.likes || 0}</span>
+                        </button>
+                        <button
+                          className={`flex items-center justify-center transition-colors ${savedIds.has(item.id) ? 'text-primary' : 'hover:text-primary'}`}
+                          onClick={(e) => handleSaveToggle(e, item)}
+                          title={savedIds.has(item.id) ? t.saved_to_my_trips : t.save_to_my_trips}
+                        >
+                          <span className={`material-symbols-outlined text-[18px] ${savedIds.has(item.id) ? 'fill-1' : ''}`}>bookmark</span>
                         </button>
                       </div>
                     </div>

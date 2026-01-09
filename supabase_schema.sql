@@ -134,3 +134,59 @@ create policy "Users can insert their own comments."
 create policy "Users can delete their own comments."
   on comments for delete
   using ( auth.uid() = user_id );
+
+-- ===========================================
+-- LIKES FUNCTIONALITY
+-- ===========================================
+
+-- Likes on itineraries (for tracking who liked what)
+create table public.itinerary_likes (
+  id uuid not null default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  itinerary_id uuid not null references public.itineraries(id) on delete cascade,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  primary key (id),
+  unique(user_id, itinerary_id)
+);
+
+-- Enable RLS for itinerary_likes
+alter table public.itinerary_likes enable row level security;
+
+-- Policies for itinerary_likes
+create policy "Users can view all likes."
+  on itinerary_likes for select
+  using ( true );
+
+create policy "Users can insert their own likes."
+  on itinerary_likes for insert
+  with check ( auth.uid() = user_id );
+
+create policy "Users can delete their own likes."
+  on itinerary_likes for delete
+  using ( auth.uid() = user_id );
+
+-- RPC function to increment likes count
+create or replace function increment_likes(itinerary_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update itineraries
+  set likes = likes + 1
+  where id = itinerary_id;
+end;
+$$;
+
+-- RPC function to decrement likes count
+create or replace function decrement_likes(itinerary_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update itineraries
+  set likes = greatest(0, likes - 1)
+  where id = itinerary_id;
+end;
+$$;

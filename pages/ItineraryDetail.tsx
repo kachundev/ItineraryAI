@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Itinerary, Activity, RestaurantOption, DayPlan } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -65,6 +65,14 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
   const [editingActivity, setEditingActivity] = useState<{ dayIndex: number; activityIndex: number } | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Community features state
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [isSavedToTrips, setIsSavedToTrips] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+
   // Activity form state
   const [activityForm, setActivityForm] = useState<Activity>({
     time: '',
@@ -77,15 +85,180 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
   });
 
   // Initialize local itinerary when entering edit mode or when itinerary changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (itinerary) {
       setLocalItinerary(JSON.parse(JSON.stringify(itinerary))); // Deep clone
+      setLikeCount(itinerary.likes || 0);
     }
   }, [itinerary]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setIsSaved(false);
   }, [itinerary]);
+
+  // Fetch comments and user's like/save status
+  useEffect(() => {
+    if (itinerary?.id) {
+      fetchComments();
+      if (user) {
+        fetchUserInteractions();
+      }
+    }
+  }, [itinerary?.id, user]);
+
+  const fetchComments = async () => {
+    if (!itinerary?.id) return;
+    const { data, error } = await supabase
+      .from('itinerary_comments')
+      .select(`
+        *,
+        profiles:user_id (
+          id,
+          full_name,
+          avatar_url
+        )
+      `)
+      .eq('itinerary_id', itinerary.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setComments(data);
+    }
+  };
+
+  const fetchUserInteractions = async () => {
+    if (!user || !itinerary?.id) return;
+
+    const { data: likeData } = await supabase
+      .from('itinerary_likes')
+      .select('id')
+      .match({ user_id: user.id, itinerary_id: itinerary.id })
+      .maybeSingle();
+
+    setIsLiked(!!likeData);
+
+    const { data: saveData } = await supabase
+      .from('itinerary_saves')
+      .select('id')
+      .match({ user_id: user.id, itinerary_id: itinerary.id })
+      .maybeSingle();
+
+    setIsSavedToTrips(!!saveData);
+  };
+
+  const handlePostComment = async () => {
+    if (!user || !itinerary?.id || !newComment.trim()) return;
+
+    setIsPostingComment(true);
+    try {
+      const { data, error } = await supabase
+        .from('itinerary_comments')
+        .insert({
+          itinerary_id: itinerary.id,
+          user_id: user.id,
+          content: newComment.trim()
+        })
+        .select(`
+          *,
+          profiles:user_id (
+            id,
+            full_name,
+            avatar_url
+          )
+        `)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setComments(prev => [data, ...prev]);
+        setNewComment('');
+      }
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      alert(t.comment_error || 'Failed to post comment');
+    } finally {
+      setIsPostingComment(false);
+    }
+  };
+
+  const handleLikeToggle = async () => {
+    if (!user) {
+      alert(t.login_to_comment);
+      return;
+    }
+    if (!itinerary?.id) return;
+
+    if (isLiked) {
+      await supabase
+        .from('itinerary_likes')
+        .delete()
+        .match({ user_id: user.id, itinerary_id: itinerary.id });
+      setIsLiked(false);
+      setLikeCount(prev => Math.max(0, prev - 1));
+      await supabase.rpc('decrement_likes', { itinerary_id: itinerary.id });
+    } else {
+      await supabase
+        .from('itinerary_likes')
+        .insert({ user_id: user.id, itinerary_id: itinerary.id });
+      setIsLiked(true);
+      setLikeCount(prev => prev + 1);
+      await supabase.rpc('increment_likes', { itinerary_id: itinerary.id });
+    }
+  };
+
+  const handleSaveToTripsToggle = async () => {
+    if (!user) {
+      alert(t.login_to_save);
+      return;
+    }
+    if (!itinerary) return;
+
+    // For copy-based saves, we can only add (not toggle delete since it's a copy)
+    if (isSavedToTrips) {
+      alert(t.already_saved || 'This itinerary has already been copied to your trips!');
+      return;
+    }
+
+    try {
+      // Create a full copy of the itinerary for the user
+      const content = {
+        generated: itinerary.generated,
+        days: itinerary.days,
+        tags: itinerary.tags,
+        budget: itinerary.budget,
+        rating: itinerary.rating,
+        coverImage: itinerary.coverImage,
+        description: itinerary.description,
+        // Track the original source
+        copiedFrom: {
+          itineraryId: itinerary.id,
+          authorName: itinerary.author?.name,
+          copiedAt: new Date().toISOString()
+        }
+      };
+
+      const { error } = await supabase
+        .from('itineraries')
+        .insert({
+          user_id: user.id,
+          title: itinerary.title,
+          destination: itinerary.location,
+          start_date: itinerary.startDate,
+          end_date: itinerary.endDate,
+          content,
+          is_public: false // User's copy is private by default
+        });
+
+      if (error) throw error;
+
+      setIsSavedToTrips(true);
+      alert(t.saved_success || 'Itinerary copied to your trips!');
+    } catch (error) {
+      console.error('Error copying itinerary:', error);
+      alert(t.save_error || 'Failed to save itinerary');
+    }
+  };
 
   if (!itinerary) {
     return (
@@ -309,8 +482,18 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
 
         {/* Action Buttons */}
         <div className="absolute top-6 right-6 flex gap-3 z-20">
-          <button className="size-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-primary transition-colors">
-            <span className="material-symbols-outlined text-[20px]">favorite_border</span>
+          <button
+            onClick={handleLikeToggle}
+            className={`size-10 rounded-full backdrop-blur-md flex items-center justify-center transition-colors ${isLiked ? 'bg-red-500 text-white' : 'bg-white/10 text-white hover:bg-primary'}`}
+          >
+            <span className={`material-symbols-outlined text-[20px] ${isLiked ? 'fill-1' : ''}`}>favorite</span>
+          </button>
+          <button
+            onClick={handleSaveToTripsToggle}
+            className={`size-10 rounded-full backdrop-blur-md flex items-center justify-center transition-colors ${isSavedToTrips ? 'bg-primary text-white' : 'bg-white/10 text-white hover:bg-white hover:text-slate-900'}`}
+            title={isSavedToTrips ? t.saved_to_my_trips : t.save_to_my_trips}
+          >
+            <span className={`material-symbols-outlined text-[20px] ${isSavedToTrips ? 'fill-1' : ''}`}>bookmark</span>
           </button>
           <button className="size-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white hover:text-slate-900 transition-colors">
             <span className="material-symbols-outlined text-[20px]">ios_share</span>
@@ -339,14 +522,6 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                 <span className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary">payments</span>
                   {itinerary.budget}
-                </span>
-              </div>
-              <div className="w-px h-12 bg-gray-200 dark:bg-gray-700 hidden sm:block"></div>
-              <div className="flex flex-col items-center sm:items-start">
-                <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-gray-400 font-bold mb-1">{t.rating}</span>
-                <span className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-xl">star</span>
-                  {itinerary.rating}
                 </span>
               </div>
             </div>
@@ -557,11 +732,19 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                 )}
 
                 <div className="grid grid-cols-2 gap-3">
-                  <button className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300 font-bold text-sm transition-colors">
-                    <span className="material-symbols-outlined text-[20px] text-red-500">favorite</span> {t.like}
+                  <button
+                    onClick={handleLikeToggle}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border transition-colors font-bold text-sm ${isLiked ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-500' : 'border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300'}`}
+                  >
+                    <span className={`material-symbols-outlined text-[20px] ${isLiked ? 'fill-1 text-red-500' : 'text-red-500'}`}>favorite</span>
+                    {likeCount > 0 ? likeCount : t.like}
                   </button>
-                  <button className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300 font-bold text-sm transition-colors">
-                    <span className="material-symbols-outlined text-[20px]">share</span> {t.share}
+                  <button
+                    onClick={handleSaveToTripsToggle}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border transition-colors font-bold text-sm ${isSavedToTrips ? 'bg-primary/10 border-primary/30 text-primary' : 'border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300'}`}
+                  >
+                    <span className={`material-symbols-outlined text-[20px] ${isSavedToTrips ? 'fill-1' : ''}`}>bookmark</span>
+                    {isSavedToTrips ? t.saved : t.save}
                   </button>
                 </div>
               </div>
@@ -585,6 +768,79 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Comments Section */}
+      <div className="max-w-7xl mx-auto px-4 lg:px-8 py-12">
+        <div className="bg-white dark:bg-card-dark rounded-xl border border-gray-100 dark:border-[#2a2e35] p-6 shadow-sm">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">comment</span>
+            {t.comments || 'Comments'} ({comments.length})
+          </h3>
+
+          {/* Comment Input */}
+          {user ? (
+            <div className="flex gap-4 mb-8">
+              <img
+                src={user.user_metadata?.avatar_url || `https://i.pravatar.cc/150?u=${user.id}`}
+                alt="You"
+                className="size-10 rounded-full shrink-0"
+              />
+              <div className="flex-1">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder={t.write_comment || 'Write a comment...'}
+                  rows={3}
+                  className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none resize-none"
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={handlePostComment}
+                    disabled={isPostingComment || !newComment.trim()}
+                    className="px-5 py-2 bg-primary hover:bg-primary-hover text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isPostingComment && <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>}
+                    {t.post_comment || 'Post'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-gray-50 dark:bg-[#25282e] rounded-xl mb-8">
+              <p className="text-slate-500 dark:text-gray-400">{t.login_to_comment || 'Sign in to leave a comment'}</p>
+            </div>
+          )}
+
+          {/* Comments List */}
+          <div className="space-y-6">
+            {comments.length === 0 ? (
+              <div className="text-center py-8">
+                <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">chat_bubble_outline</span>
+                <p className="text-slate-500 dark:text-gray-400">{t.no_comments || 'No comments yet. Be the first to comment!'}</p>
+              </div>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.id} className="flex gap-4">
+                  <img
+                    src={comment.profiles?.avatar_url || `https://i.pravatar.cc/150?u=${comment.user_id}`}
+                    alt={comment.profiles?.full_name || 'User'}
+                    className="size-10 rounded-full shrink-0"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-bold text-slate-900 dark:text-white">{comment.profiles?.full_name || 'Anonymous'}</span>
+                      <span className="text-xs text-slate-400 dark:text-gray-500">
+                        {new Date(comment.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p className="text-slate-600 dark:text-gray-300 text-sm leading-relaxed">{comment.content}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

@@ -43,6 +43,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
 
       if (ownedData) {
         const mappedItineraries: Itinerary[] = ownedData.map(item => ({
+          ...item.content,
           id: item.id,
           userId: item.user_id,
           title: item.title,
@@ -51,10 +52,6 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
           endDate: item.end_date,
           isPublic: item.is_public,
           likes: item.likes,
-          ...item.content,
-          // Ensure ID and title are from the top level row
-          id: item.id,
-          title: item.title,
         }));
         setItineraries(mappedItineraries);
       }
@@ -82,6 +79,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
           .map((item: any) => {
             const it = item.itineraries;
             return {
+              ...it.content,
               id: it.id,
               userId: it.user_id,
               title: it.title,
@@ -90,13 +88,10 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
               endDate: it.end_date,
               isPublic: it.is_public,
               likes: it.likes,
-              ...it.content,
               author: {
                 name: it.profiles?.full_name || 'Unknown',
                 avatar: it.profiles?.avatar_url || '',
               },
-              id: it.id,
-              title: it.title,
             };
           });
         setSavedItineraries(mappedSaved);
@@ -314,8 +309,8 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`pb-3 border-b-[3px] px-2 font-bold text-sm tracking-wide transition-all ${activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent hover:border-primary/30 text-slate-500 dark:text-gray-400'
+                ? 'border-primary text-primary'
+                : 'border-transparent hover:border-primary/30 text-slate-500 dark:text-gray-400'
                 }`}
             >
               {t[tab === 'past' ? 'past_trips' : tab]}

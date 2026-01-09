@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { SkeletonExploreGrid } from '../components/Skeleton';
+import { NoSearchResultsEmptyState, NoCommunityTripsEmptyState } from '../components/EmptyState';
 
 interface ExploreProps {
   onNavigate: (view: any, data?: any) => void;
@@ -14,6 +16,19 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
   const [loading, setLoading] = useState(true);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter itineraries based on search query
+  const filteredItineraries = itineraries.filter(item => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      item.title?.toLowerCase().includes(query) ||
+      item.location?.toLowerCase().includes(query) ||
+      item.tags?.some(tag => tag.toLowerCase().includes(query)) ||
+      item.description?.toLowerCase().includes(query)
+    );
+  });
 
   useEffect(() => {
     fetchPublicItineraries();
@@ -208,9 +223,19 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
             </span>
             <input
               type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t.search_destinations}
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1e2126] border border-gray-200 dark:border-[#2a2e35] rounded-xl text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none text-slate-900 dark:text-white"
+              className="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-[#1e2126] border border-gray-200 dark:border-[#2a2e35] rounded-xl text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none text-slate-900 dark:text-white"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -262,26 +287,16 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <span className="material-symbols-outlined text-4xl text-primary animate-spin">progress_activity</span>
-            </div>
-          ) : itineraries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="bg-gray-100 dark:bg-[#2a2e35] p-6 rounded-full mb-6">
-                <span className="material-symbols-outlined text-5xl text-gray-400">explore</span>
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t.no_itinerary}</h2>
-              <p className="text-slate-500 dark:text-gray-400 mb-6">No public itineraries yet. Be the first to publish!</p>
-              <button
-                onClick={() => onNavigate('home')}
-                className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors shadow-lg shadow-primary/20"
-              >
-                {t.create_new_trip}
-              </button>
-            </div>
+            <SkeletonExploreGrid count={6} />
+          ) : filteredItineraries.length === 0 ? (
+            searchQuery ? (
+              <NoSearchResultsEmptyState query={searchQuery} onClear={() => setSearchQuery('')} />
+            ) : (
+              <NoCommunityTripsEmptyState onCreateTrip={() => onNavigate('home')} />
+            )
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {itineraries.map((item) => (
+              {filteredItineraries.map((item) => (
                 <div
                   key={item.id}
                   onClick={() => onNavigate('itinerary', item)}
@@ -336,7 +351,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
             </div>
           )}
 
-          {!loading && itineraries.length > 0 && (
+          {!loading && filteredItineraries.length > 0 && (
             <div className="flex justify-center mt-12">
               <button className="px-8 py-3 rounded-full bg-white dark:bg-[#1e2126] border border-gray-200 dark:border-[#2a2e35] text-slate-900 dark:text-white font-bold hover:bg-gray-50 dark:hover:bg-[#2a2e35]/80 transition-all shadow-sm">
                 {t.load_more}

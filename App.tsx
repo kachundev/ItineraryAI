@@ -4,13 +4,15 @@ import Explore from './pages/Explore';
 import MyItineraries from './pages/MyItineraries';
 import Profile from './pages/Profile';
 import ItineraryDetail from './pages/ItineraryDetail';
+import ManualItineraryCreator from './pages/ManualItineraryCreator';
 import { Itinerary } from './types';
 import { translations, Language } from './translations';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
+import { ToastProvider } from './components/Toast';
 
 // Simple Navigation Context type
-type View = 'home' | 'explore' | 'my-trips' | 'profile' | 'itinerary';
+type View = 'home' | 'explore' | 'my-trips' | 'profile' | 'itinerary' | 'manual-create';
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<View>('home');
@@ -49,6 +51,8 @@ function AppContent() {
         />;
       case 'profile':
         return <Profile onNavigate={navigate} t={t} />;
+      case 'manual-create':
+        return <ManualItineraryCreator onNavigate={navigate} t={t} />;
       case 'itinerary':
         return <ItineraryDetail itinerary={selectedItinerary} onNavigate={navigate} t={t} onSave={handleSaveItinerary} />;
       default:
@@ -118,13 +122,26 @@ function AppContent() {
               </button>
             ) : (
               <>
-                <button
-                  onClick={() => navigate('home')}
-                  className="hidden sm:flex items-center justify-center gap-2 rounded-lg h-9 px-4 bg-primary/10 text-primary hover:bg-primary hover:text-white transition-colors text-sm font-bold"
-                >
-                  <span className="material-symbols-outlined text-[18px]">add</span>
-                  <span>{t.new_trip}</span>
-                </button>
+                <div className="relative group z-40">
+                  <button
+                    className="hidden sm:flex items-center justify-center gap-2 rounded-lg h-9 px-4 bg-primary/10 text-primary hover:bg-primary hover:text-white transition-colors text-sm font-bold"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    <span>{t.new_trip}</span>
+                  </button>
+                  <div className="absolute top-full right-0 pt-2 w-48 hidden group-hover:block animate-fadeIn">
+                    <div className="bg-white dark:bg-[#1e2126] rounded-xl shadow-xl border border-gray-100 dark:border-[#2a2e35] overflow-hidden py-1">
+                      <button onClick={() => navigate('home')} className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-[#2a2e35] font-medium text-slate-700 dark:text-gray-300 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                        {t.plan_with_ai}
+                      </button>
+                      <button onClick={() => navigate('manual-create')} className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-[#2a2e35] font-medium text-slate-700 dark:text-gray-300 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px] text-blue-500">edit_note</span>
+                        {t.create_manually || 'Create Manually'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div className="relative group z-40">
                   <button onClick={() => navigate('profile')} className="bg-center bg-no-repeat bg-cover rounded-full size-9 ring-2 ring-transparent hover:ring-primary cursor-pointer transition-all bg-gray-200 text-gray-600 font-bold flex items-center justify-center"
                     style={user.user_metadata?.avatar_url ? { backgroundImage: `url("${user.user_metadata.avatar_url}")` } : {}}>
@@ -175,7 +192,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }

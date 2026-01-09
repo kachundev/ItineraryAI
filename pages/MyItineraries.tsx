@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { SkeletonGrid } from '../components/Skeleton';
+import { NoTripsEmptyState, NoSavedTripsEmptyState, NoSearchResultsEmptyState } from '../components/EmptyState';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ShareMenu } from '../components/ShareMenu';
 
 interface MyItinerariesProps {
   onNavigate: (view: any, data?: any) => void;
@@ -20,6 +24,13 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
   const [editingTrip, setEditingTrip] = useState<Itinerary | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    type: 'delete' | 'remove';
+    tripId: string;
+  }>({ isOpen: false, type: 'delete', tripId: '' });
+  const [isDeleting, setIsDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -130,44 +141,54 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
     setOpenMenuId(null);
   };
 
-  const handleDeleteClick = async (e: React.MouseEvent, id: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    if (window.confirm(t.delete_confirm)) {
-      try {
-        const { error } = await supabase
-          .from('itineraries')
-          .delete()
-          .eq('id', id);
+    setConfirmDialog({ isOpen: true, type: 'delete', tripId: id });
+  };
 
-        if (error) throw error;
+  const confirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('itineraries')
+        .delete()
+        .eq('id', confirmDialog.tripId);
 
-        setItineraries(prev => prev.filter(i => i.id !== id));
-      } catch (error) {
-        console.error('Error deleting itinerary:', error);
-        alert('Failed to delete itinerary');
-      }
+      if (error) throw error;
+
+      setItineraries(prev => prev.filter(i => i.id !== confirmDialog.tripId));
+      setConfirmDialog({ isOpen: false, type: 'delete', tripId: '' });
+    } catch (error) {
+      console.error('Error deleting itinerary:', error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  const handleRemoveSavedClick = async (e: React.MouseEvent, id: string) => {
+  const handleRemoveSavedClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!user) return;
+    setConfirmDialog({ isOpen: true, type: 'remove', tripId: id });
+  };
 
-    if (window.confirm("Remove from saved trips?")) {
-      try {
-        const { error } = await supabase
-          .from('itinerary_saves')
-          .delete()
-          .match({ user_id: user.id, itinerary_id: id });
+  const confirmRemoveSaved = async () => {
+    if (!user) return;
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('itinerary_saves')
+        .delete()
+        .match({ user_id: user.id, itinerary_id: confirmDialog.tripId });
 
-        if (error) throw error;
+      if (error) throw error;
 
-        setSavedItineraries(prev => prev.filter(i => i.id !== id));
-      } catch (error) {
-        console.error('Error removing saved itinerary:', error);
-        alert('Failed to remove saved itinerary');
-      }
+      setSavedItineraries(prev => prev.filter(i => i.id !== confirmDialog.tripId));
+      setConfirmDialog({ isOpen: false, type: 'delete', tripId: '' });
+    } catch (error) {
+      console.error('Error removing saved itinerary:', error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -255,28 +276,47 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
   // Fallback if no status field used yet, just show all in upcoming for now or split by date
   // Since we don't strictly use 'status' column in DB yet (it's in JSON), let's simplify logic:
   const displayItineraries = (() => {
-    if (activeTab === 'favorites') return savedItineraries;
+    let items: Itinerary[] = [];
 
-    const now = new Date();
-    now.setHours(0, 0, 0, 0); // Normalize today
+    if (activeTab === 'favorites') {
+      items = savedItineraries;
+    } else {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0); // Normalize today
 
-    return itineraries.filter(trip => {
-      if (!trip.endDate) return activeTab === 'upcoming'; // No date = upcoming/draft
-      const end = new Date(trip.endDate);
+      items = itineraries.filter(trip => {
+        if (!trip.endDate) return activeTab === 'upcoming'; // No date = upcoming/draft
+        const end = new Date(trip.endDate);
 
-      if (activeTab === 'past') return end < now;
-      // Default everything else to upcoming/drafts bucket for now
-      // IF we want to separate drafts, we need a way to identify them. 
-      // Assuming all created trips are 'upcoming' unless date passed
-      if (activeTab === 'upcoming' || activeTab === 'drafts') return end >= now;
-      return false;
-    });
+        if (activeTab === 'past') return end < now;
+        // Default everything else to upcoming/drafts bucket for now
+        if (activeTab === 'upcoming' || activeTab === 'drafts') return end >= now;
+        return false;
+      });
+    }
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      items = items.filter(trip =>
+        trip.title?.toLowerCase().includes(query) ||
+        trip.location?.toLowerCase().includes(query) ||
+        trip.tags?.some(tag => tag.toLowerCase().includes(query)) ||
+        trip.description?.toLowerCase().includes(query)
+      );
+    }
+
+    return items;
   })();
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <span className="material-symbols-outlined text-4xl text-primary animate-spin">progress_activity</span>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <div className="mb-8">
+          <div className="h-10 w-48 bg-gray-200 dark:bg-[#2a2e35] rounded-lg animate-pulse mb-2" />
+          <div className="h-5 w-32 bg-gray-200 dark:bg-[#2a2e35] rounded animate-pulse" />
+        </div>
+        <SkeletonGrid count={6} />
       </div>
     );
   }
@@ -295,9 +335,19 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
             </span>
             <input
               type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t.search_destinations}
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1e2126] border border-gray-200 dark:border-[#2a2e35] rounded-xl text-base focus:ring-1 focus:ring-primary focus:border-primary outline-none text-slate-900 dark:text-white transition-all shadow-sm"
+              className="w-full pl-10 pr-10 py-3 bg-white dark:bg-[#1e2126] border border-gray-200 dark:border-[#2a2e35] rounded-xl text-base focus:ring-1 focus:ring-primary focus:border-primary outline-none text-slate-900 dark:text-white transition-all shadow-sm"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -320,25 +370,13 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
       </div>
 
       {displayItineraries.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="bg-gray-100 dark:bg-[#2a2e35] p-6 rounded-full mb-6">
-            <span className="material-symbols-outlined text-5xl text-gray-400">
-              {activeTab === 'favorites' ? 'favorite_border' : 'flight_takeoff'}
-            </span>
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            {activeTab === 'favorites' ? 'No saved trips' : 'No trips found'}
-          </h2>
-          <p className="text-slate-500 dark:text-gray-400 mb-6">
-            {activeTab === 'favorites' ? 'Go to Explore to find and save trips!' : "You haven't planned any trips yet."}
-          </p>
-          <button
-            onClick={() => onNavigate(activeTab === 'favorites' ? 'explore' : 'home')}
-            className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors shadow-lg shadow-primary/20"
-          >
-            {activeTab === 'favorites' ? 'Explore Itineraries' : t.create_new_trip}
-          </button>
-        </div>
+        searchQuery ? (
+          <NoSearchResultsEmptyState query={searchQuery} onClear={() => setSearchQuery('')} />
+        ) : activeTab === 'favorites' ? (
+          <NoSavedTripsEmptyState onExplore={() => onNavigate('explore')} />
+        ) : (
+          <NoTripsEmptyState onCreateTrip={() => onNavigate('home')} />
+        )
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Create New Card - Only show in Upcoming/Drafts */}
@@ -463,9 +501,11 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
                     <span>{t.view_plan}</span>
                     <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                   </button>
-                  <button className="flex items-center justify-center gap-2 bg-gray-100 dark:bg-[#2a2e35] hover:bg-gray-200 dark:hover:bg-[#32363e] text-slate-900 dark:text-white font-medium px-4 py-2.5 rounded-lg transition-all duration-200">
-                    <span className="material-symbols-outlined text-[20px]">share</span>
-                  </button>
+                  <ShareMenu
+                    url={`${window.location.origin}/itinerary/${trip.id}`}
+                    title={trip.title}
+                    description={`Check out my trip to ${trip.location}!`}
+                  />
                 </div>
               </div>
             </div>
@@ -518,6 +558,21 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, type: 'delete', tripId: '' })}
+        onConfirm={confirmDialog.type === 'delete' ? confirmDelete : confirmRemoveSaved}
+        title={confirmDialog.type === 'delete' ? 'Delete Trip?' : 'Remove Saved Trip?'}
+        message={confirmDialog.type === 'delete'
+          ? 'This action cannot be undone. Your itinerary and all its data will be permanently deleted.'
+          : 'This trip will be removed from your saved collection. You can always save it again later.'
+        }
+        confirmLabel={confirmDialog.type === 'delete' ? 'Delete' : 'Remove'}
+        variant={confirmDialog.type === 'delete' ? 'danger' : 'warning'}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

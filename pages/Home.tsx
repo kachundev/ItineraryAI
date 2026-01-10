@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { generateItinerary } from '../services/geminiService';
 import { Itinerary } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface HomeProps {
   onNavigate: (view: any, data?: any) => void;
@@ -15,6 +16,21 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
   const [specialRequests, setSpecialRequests] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [trendingItineraries, setTrendingItineraries] = useState<any[]>([]);
+
+  // Fetch trending itineraries
+  useEffect(() => {
+    const fetchTrending = async () => {
+      const { data } = await supabase
+        .from('itineraries')
+        .select('id, title, destination, content, likes')
+        .eq('is_public', true)
+        .order('likes', { ascending: false })
+        .limit(3);
+      setTrendingItineraries(data || []);
+    };
+    fetchTrending();
+  }, []);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,23 +198,30 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {['Kyoto, Japan', 'Reykjavik, Iceland', 'Paris, France'].map((place, i) => (
-              <div key={i} className="group relative h-64 rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-all" onClick={() => onNavigate('explore')}>
-                <img
-                  src={`https://image.pollinations.ai/prompt/${encodeURIComponent(place + " travel landscape")}?width=800&height=600&nologo=true`}
-                  alt={place}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
-                <div className="absolute bottom-6 left-6 text-white">
-                  <h3 className="text-xl font-bold">{place}</h3>
-                  <p className="text-sm opacity-90 flex items-center gap-1 mt-1">
-                    <span className="material-symbols-outlined text-sm text-primary">auto_awesome</span>
-                    {t.popular_with_foodies}
-                  </p>
+            {trendingItineraries.length > 0 ? (
+              trendingItineraries.map((item) => (
+                <div key={item.id} className="group relative h-64 rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-all" onClick={() => onNavigate('explore')}>
+                  <img
+                    src={item.content?.coverImage || `https://image.pollinations.ai/prompt/${encodeURIComponent(item.destination + " travel landscape")}?width=800&height=600&nologo=true`}
+                    alt={item.destination}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                  <div className="absolute bottom-6 left-6 text-white">
+                    <h3 className="text-xl font-bold">{item.destination}</h3>
+                    <p className="text-sm opacity-90 flex items-center gap-1 mt-1">
+                      <span className="material-symbols-outlined text-sm">thumb_up</span>
+                      {item.likes || 0} {t.like}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              // Skeleton loading
+              [1, 2, 3].map((i) => (
+                <div key={i} className="h-64 rounded-2xl bg-gray-200 dark:bg-[#2a2e35] animate-pulse"></div>
+              ))
+            )}
           </div>
         </div>
       </section>

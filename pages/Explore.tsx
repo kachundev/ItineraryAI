@@ -1,34 +1,89 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SkeletonExploreGrid } from '../components/Skeleton';
 import { NoSearchResultsEmptyState, NoCommunityTripsEmptyState } from '../components/EmptyState';
+import { useToast } from '../components/Toast';
 
 interface ExploreProps {
   onNavigate: (view: any, data?: any) => void;
   t: any;
 }
 
+type SortCategory = 'trending' | 'newest' | 'top-rated';
+
+const ITEMS_PER_PAGE = 9;
+
 export default function Explore({ onNavigate, t }: ExploreProps) {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<SortCategory>('newest');
+  const [activeTag, setActiveTag] = useState<string>('All');
+  const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
 
-  // Filter itineraries based on search query
-  const filteredItineraries = itineraries.filter(item => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      item.title?.toLowerCase().includes(query) ||
-      item.location?.toLowerCase().includes(query) ||
-      item.tags?.some(tag => tag.toLowerCase().includes(query)) ||
-      item.description?.toLowerCase().includes(query)
-    );
-  });
+  // Get unique tags from all itineraries
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    itineraries.forEach(item => {
+      item.tags?.forEach(tag => tagSet.add(tag));
+    });
+    return ['All', ...Array.from(tagSet).slice(0, 8)];
+  }, [itineraries]);
+
+  // Filter and sort itineraries
+  const filteredItineraries = useMemo(() => {
+    let result = [...itineraries];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(item =>
+        item.title?.toLowerCase().includes(query) ||
+        item.location?.toLowerCase().includes(query) ||
+        item.tags?.some(tag => tag.toLowerCase().includes(query)) ||
+        item.description?.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply tag filter
+    if (activeTag !== 'All') {
+      result = result.filter(item =>
+        item.tags?.some(tag => tag.toLowerCase() === activeTag.toLowerCase())
+      );
+    }
+
+    // Apply category sorting
+    switch (activeCategory) {
+      case 'trending':
+        // Filter to last 7 days (by publish date), then sort by likes
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        result = result.filter(item => item.createdAt && new Date(item.createdAt) >= sevenDaysAgo);
+        result.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+        break;
+      case 'newest':
+        // Sort by publish date (newest first)
+        result.sort((a, b) => new Date(b.createdAt || b.startDate).getTime() - new Date(a.createdAt || a.startDate).getTime());
+        break;
+      case 'top-rated':
+        // Sort by most likes
+        result.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+        break;
+    }
+
+    return result;
+  }, [itineraries, searchQuery, activeTag, activeCategory]);
+
+  // Reset display count when filters change
+  useEffect(() => {
+    setDisplayCount(ITEMS_PER_PAGE);
+  }, [searchQuery, activeTag, activeCategory]);
 
   useEffect(() => {
     fetchPublicItineraries();
@@ -65,61 +120,49 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
   const handleSaveToggle = async (e: React.MouseEvent, itinerary: Itinerary) => {
     e.stopPropagation();
     if (!user) {
-      alert(t.login_to_save);
+      showToast(t.login_to_save, 'warning');
       return;
     }
 
     const isSaved = savedIds.has(itinerary.id);
 
-    // For copy-based saves, we can only add (not toggle delete since it's a copy)
-    if (isSaved) {
-      alert(t.already_saved || 'This itinerary has already been copied to your trips!');
-      return;
-    }
-
     try {
-      // Create a full copy of the itinerary for the user
-      const content = {
-        generated: itinerary.generated,
-        days: itinerary.days,
-        tags: itinerary.tags,
-        budget: itinerary.budget,
-        rating: itinerary.rating,
-        coverImage: itinerary.coverImage,
-        description: itinerary.description,
-        copiedFrom: {
-          itineraryId: itinerary.id,
-          authorName: itinerary.author?.name,
-          copiedAt: new Date().toISOString()
-        }
-      };
+      if (isSaved) {
+        // Remove from saved
+        const { error } = await supabase
+          .from('itinerary_saves')
+          .delete()
+          .match({ user_id: user.id, itinerary_id: itinerary.id });
 
-      const { error } = await supabase
-        .from('itineraries')
-        .insert({
-          user_id: user.id,
-          title: itinerary.title,
-          destination: itinerary.location,
-          start_date: itinerary.startDate,
-          end_date: itinerary.endDate,
-          content,
-          is_public: false
+        if (error) throw error;
+
+        setSavedIds(prev => {
+          const next = new Set(prev);
+          next.delete(itinerary.id);
+          return next;
         });
+        showToast(t.removed_from_saved || 'Removed from saved trips', 'success');
+      } else {
+        // Add to saved
+        const { error } = await supabase
+          .from('itinerary_saves')
+          .insert({ user_id: user.id, itinerary_id: itinerary.id });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      setSavedIds(prev => new Set(prev).add(itinerary.id));
-      alert(t.saved_success || 'Itinerary copied to your trips!');
+        setSavedIds(prev => new Set(prev).add(itinerary.id));
+        showToast(t.saved_success || 'Saved to your trips!', 'success');
+      }
     } catch (error) {
-      console.error('Error copying itinerary:', error);
-      alert(t.save_error || 'Failed to save itinerary');
+      console.error('Error toggling save:', error);
+      showToast(t.save_error || 'Failed to save itinerary', 'error');
     }
   };
 
   const handleLikeToggle = async (e: React.MouseEvent, itineraryId: string) => {
     e.stopPropagation();
     if (!user) {
-      alert(t.login_to_comment);
+      showToast(t.login_to_comment, 'warning');
       return;
     }
 
@@ -178,6 +221,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
           location: item.destination,
           startDate: item.start_date,
           endDate: item.end_date,
+          createdAt: item.created_at,
           isPublic: item.is_public,
           likes: item.likes || 0,
           author: {
@@ -240,17 +284,23 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
 
           <div className="flex flex-col gap-2">
             <h3 className="font-bold text-sm uppercase text-slate-400 dark:text-gray-500 tracking-wider mb-2">{t.categories}</h3>
-            {['Trending', 'Newest', 'Top Rated', 'Following'].map((cat, i) => (
+            {([
+              { id: 'trending', label: 'Trending', icon: 'trending_up' },
+              { id: 'newest', label: 'Newest', icon: 'schedule' },
+              { id: 'top-rated', label: 'Top Rated', icon: 'star' },
+            ] as const).map((cat) => (
               <button
-                key={cat}
-                className={`flex items-center justify-between p-3 rounded-xl transition-all ${i === 0 ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1e2126]'}`}
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`flex items-center justify-between p-3 rounded-xl transition-all ${activeCategory === cat.id ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1e2126]'}`}
               >
                 <div className="flex items-center gap-3">
-                  <span className="material-symbols-outlined text-[20px]">
-                    {i === 0 ? 'trending_up' : i === 1 ? 'new_releases' : i === 2 ? 'star' : 'group'}
-                  </span>
-                  {cat}
+                  <span className="material-symbols-outlined text-[20px]">{cat.icon}</span>
+                  {cat.label}
                 </div>
+                {activeCategory === cat.id && (
+                  <span className="material-symbols-outlined text-[16px]">check</span>
+                )}
               </button>
             ))}
           </div>
@@ -276,10 +326,11 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
         {/* Main Feed */}
         <div className="flex-1">
           <div className="flex gap-2 overflow-x-auto pb-4 mb-4 no-scrollbar">
-            {['All', 'Japan', 'Europe', 'Family Trip', 'Adventure', 'Foodie'].map((tag, i) => (
+            {availableTags.map((tag) => (
               <button
                 key={tag}
-                className={`px-4 py-2 rounded-full text-sm font-medium border whitespace-nowrap transition-colors ${i === 0 ? 'bg-white dark:bg-[#1e2126] border-primary text-primary font-bold' : 'bg-transparent border-transparent hover:bg-gray-100 dark:hover:bg-[#1e2126] text-slate-600 dark:text-gray-400'}`}
+                onClick={() => setActiveTag(tag)}
+                className={`px-4 py-2 rounded-full text-sm font-medium border whitespace-nowrap transition-colors ${activeTag === tag ? 'bg-white dark:bg-[#1e2126] border-primary text-primary font-bold' : 'bg-transparent border-transparent hover:bg-gray-100 dark:hover:bg-[#1e2126] text-slate-600 dark:text-gray-400'}`}
               >
                 {tag}
               </button>
@@ -296,7 +347,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
             )
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredItineraries.map((item) => (
+              {filteredItineraries.slice(0, displayCount).map((item) => (
                 <div
                   key={item.id}
                   onClick={() => onNavigate('itinerary', item)}
@@ -351,9 +402,15 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
             </div>
           )}
 
-          {!loading && filteredItineraries.length > 0 && (
-            <div className="flex justify-center mt-12">
-              <button className="px-8 py-3 rounded-full bg-white dark:bg-[#1e2126] border border-gray-200 dark:border-[#2a2e35] text-slate-900 dark:text-white font-bold hover:bg-gray-50 dark:hover:bg-[#2a2e35]/80 transition-all shadow-sm">
+          {!loading && filteredItineraries.length > displayCount && (
+            <div className="flex flex-col items-center gap-2 mt-12">
+              <p className="text-sm text-slate-500 dark:text-gray-400">
+                Showing {Math.min(displayCount, filteredItineraries.length)} of {filteredItineraries.length} trips
+              </p>
+              <button
+                onClick={() => setDisplayCount(prev => prev + ITEMS_PER_PAGE)}
+                className="px-8 py-3 rounded-full bg-white dark:bg-[#1e2126] border border-gray-200 dark:border-[#2a2e35] text-slate-900 dark:text-white font-bold hover:bg-gray-50 dark:hover:bg-[#2a2e35]/80 transition-all shadow-sm"
+              >
                 {t.load_more}
               </button>
             </div>

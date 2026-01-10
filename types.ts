@@ -39,6 +39,7 @@ export interface Itinerary {
   location: string;
   startDate: string;
   endDate: string;
+  createdAt?: string; // ISO date string from DB created_at
   days: DayPlan[];
   coverImage?: string;
   tags?: string[];
@@ -57,13 +58,17 @@ export interface Itinerary {
 }
 
 export interface User {
+  id: string; // Add ID as it's useful
   name: string;
-  handle: string;
-  bio: string;
-  avatar: string;
-  stats: {
+  email?: string;
+  username?: string; // New field
+  bio?: string; // New field
+  avatar?: string;
+  banner?: string; // Banner image URL
+  joinedAt?: string; // 加入日期
+  stats?: {
     trips: number;
-    fans: string;
+    fans?: number; // Optional as we don't have this yet
     likes: number;
   };
 }

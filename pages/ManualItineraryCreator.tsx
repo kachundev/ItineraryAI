@@ -343,15 +343,20 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
         const diffTime = Math.abs(end.getTime() - start.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
+        // Preserve existing activities when recalculating days
         const newDays: DayPlan[] = [];
         for (let i = 0; i < diffDays; i++) {
             const currentDate = new Date(start);
             currentDate.setDate(start.getDate() + i);
+
+            // Try to preserve activities from existing day with same day number
+            const existingDay = days.find(d => d.day === i + 1);
+
             newDays.push({
                 day: i + 1,
                 date: currentDate.toISOString().split('T')[0],
-                title: `Day ${i + 1} in ${basicInfo.destination}`,
-                activities: []
+                title: existingDay?.title || `Day ${i + 1} in ${basicInfo.destination}`,
+                activities: existingDay?.activities || []
             });
         }
         setDays(newDays);

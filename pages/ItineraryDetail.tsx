@@ -109,7 +109,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
   const fetchComments = async () => {
     if (!itinerary?.id) return;
     const { data, error } = await supabase
-      .from('itinerary_comments')
+      .from('comments')
       .select(`
         *,
         profiles:user_id (
@@ -152,7 +152,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
     setIsPostingComment(true);
     try {
       const { data, error } = await supabase
-        .from('itinerary_comments')
+        .from('comments')
         .insert({
           itinerary_id: itinerary.id,
           user_id: user.id,
@@ -214,48 +214,31 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
     }
     if (!itinerary) return;
 
-    // For copy-based saves, we can only add (not toggle delete since it's a copy)
-    if (isSavedToTrips) {
-      alert(t.already_saved || 'This itinerary has already been copied to your trips!');
-      return;
-    }
-
     try {
-      // Create a full copy of the itinerary for the user
-      const content = {
-        generated: itinerary.generated,
-        days: itinerary.days,
-        tags: itinerary.tags,
-        budget: itinerary.budget,
-        rating: itinerary.rating,
-        coverImage: itinerary.coverImage,
-        description: itinerary.description,
-        // Track the original source
-        copiedFrom: {
-          itineraryId: itinerary.id,
-          authorName: itinerary.author?.name,
-          copiedAt: new Date().toISOString()
-        }
-      };
+      if (isSavedToTrips) {
+        // Remove from saved
+        const { error } = await supabase
+          .from('itinerary_saves')
+          .delete()
+          .match({ user_id: user.id, itinerary_id: itinerary.id });
 
-      const { error } = await supabase
-        .from('itineraries')
-        .insert({
-          user_id: user.id,
-          title: itinerary.title,
-          destination: itinerary.location,
-          start_date: itinerary.startDate,
-          end_date: itinerary.endDate,
-          content,
-          is_public: false // User's copy is private by default
-        });
+        if (error) throw error;
 
-      if (error) throw error;
+        setIsSavedToTrips(false);
+        alert(t.removed_from_saved || 'Removed from saved trips');
+      } else {
+        // Add to saved
+        const { error } = await supabase
+          .from('itinerary_saves')
+          .insert({ user_id: user.id, itinerary_id: itinerary.id });
 
-      setIsSavedToTrips(true);
-      alert(t.saved_success || 'Itinerary copied to your trips!');
+        if (error) throw error;
+
+        setIsSavedToTrips(true);
+        alert(t.saved_success || 'Saved to your trips!');
+      }
     } catch (error) {
-      console.error('Error copying itinerary:', error);
+      console.error('Error toggling save:', error);
       alert(t.save_error || 'Failed to save itinerary');
     }
   };
@@ -403,6 +386,11 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
       return;
     }
 
+    // If already saved (has a persistent ID from DB), don't save again
+    if (isSaved) {
+      return;
+    }
+
     try {
       setIsSaving(true);
 
@@ -420,7 +408,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
         coverImage: itinerary.coverImage
       };
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('itineraries')
         .insert({
           user_id: user.id,
@@ -430,12 +418,21 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
           end_date: endDate,
           content,
           is_public: false // Default to private
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
       setIsSaved(true);
-      onSave(itinerary); // Callback to update parent state or navigate
+
+      // Update the itinerary with the new DB ID so it won't be saved again
+      const savedItinerary: Itinerary = {
+        ...itinerary,
+        id: data.id,
+        userId: user.id
+      };
+      onSave(savedItinerary); // Callback to update parent state with new ID
     } catch (error) {
       console.error("Error saving itinerary:", error);
       alert("Failed to save itinerary.");
@@ -712,8 +709,8 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                   {isSaved ? t.saved : t.save_trip}
                 </button>
 
-                {/* Edit Mode Toggle */}
-                {user && itinerary.id && (
+                {/* Edit Mode Toggle - Only show for owner */}
+                {user && itinerary.id && itinerary.userId === user.id && (
                   <button
                     onClick={handleToggleEditMode}
                     disabled={isUpdating}

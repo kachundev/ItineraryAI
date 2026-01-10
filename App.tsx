@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Home from './pages/Home';
 import Explore from './pages/Explore';
 import MyItineraries from './pages/MyItineraries';
@@ -10,6 +10,7 @@ import { translations, Language } from './translations';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
 import { ToastProvider } from './components/Toast';
+import { supabase } from './lib/supabase';
 
 // Simple Navigation Context type
 type View = 'home' | 'explore' | 'my-trips' | 'profile' | 'itinerary' | 'manual-create';
@@ -19,14 +20,83 @@ function AppContent() {
   const [selectedItinerary, setSelectedItinerary] = useState<Itinerary | null>(null);
   const [language, setLanguage] = useState<Language>('en');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isLoadingSharedItinerary, setIsLoadingSharedItinerary] = useState(false);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   const { user, signOut } = useAuth();
   const t = translations[language];
+
+  // Parse URL on initial load for shared links
+  useEffect(() => {
+    const handleRouteChange = async () => {
+      const path = window.location.pathname;
+      const match = path.match(/^\/itinerary\/([a-zA-Z0-9-]+)$/);
+
+      if (match) {
+        const itineraryId = match[1];
+        setIsLoadingSharedItinerary(true);
+
+        try {
+          const { data, error } = await supabase
+            .from('itineraries')
+            .select('*')
+            .eq('id', itineraryId)
+            .single();
+
+          if (data && !error) {
+            const itinerary: Itinerary = {
+              ...data.content,
+              id: data.id,
+              userId: data.user_id,
+              title: data.title,
+              location: data.destination,
+              startDate: data.start_date,
+              endDate: data.end_date,
+              isPublic: data.is_public,
+              likes: data.likes,
+            };
+            setSelectedItinerary(itinerary);
+            setCurrentView('itinerary');
+          }
+        } catch (err) {
+          console.error('Error loading shared itinerary:', err);
+        } finally {
+          setIsLoadingSharedItinerary(false);
+        }
+      }
+    };
+
+    handleRouteChange();
+    window.addEventListener('popstate', handleRouteChange);
+    return () => window.removeEventListener('popstate', handleRouteChange);
+  }, []);
+
+  // Fetch user avatar from profiles table
+  useEffect(() => {
+    const fetchUserAvatar = async () => {
+      if (!user) {
+        setUserAvatar(null);
+        return;
+      }
+      const { data } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', user.id)
+        .single();
+      setUserAvatar(data?.avatar_url || null);
+    };
+    fetchUserAvatar();
+  }, [user, currentView]); // Re-fetch when view changes (e.g., after profile update)
 
   // Helper to switch views
   const navigate = (view: View, data?: any) => {
     if (view === 'itinerary' && data) {
       setSelectedItinerary(data);
+      // Update URL for shareable links
+      window.history.pushState({}, '', `/itinerary/${data.id}`);
+    } else {
+      // Reset URL for non-itinerary views
+      window.history.pushState({}, '', '/');
     }
     setCurrentView(view);
     window.scrollTo(0, 0);
@@ -39,6 +109,17 @@ function AppContent() {
   };
 
   const renderView = () => {
+    if (isLoadingSharedItinerary) {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <span className="material-symbols-outlined text-5xl text-primary animate-spin">progress_activity</span>
+            <p className="mt-4 text-slate-500 dark:text-gray-400">Loading itinerary...</p>
+          </div>
+        </div>
+      );
+    }
+
     switch (currentView) {
       case 'home':
         return <Home onNavigate={navigate} lang={language} t={t} />;
@@ -144,8 +225,8 @@ function AppContent() {
                 </div>
                 <div className="relative group z-40">
                   <button onClick={() => navigate('profile')} className="bg-center bg-no-repeat bg-cover rounded-full size-9 ring-2 ring-transparent hover:ring-primary cursor-pointer transition-all bg-gray-200 text-gray-600 font-bold flex items-center justify-center"
-                    style={user.user_metadata?.avatar_url ? { backgroundImage: `url("${user.user_metadata.avatar_url}")` } : {}}>
-                    {!user.user_metadata?.avatar_url && user.email?.charAt(0).toUpperCase()}
+                    style={userAvatar ? { backgroundImage: `url("${userAvatar}")` } : {}}>
+                    {!userAvatar && user.email?.charAt(0).toUpperCase()}
                   </button>
                   {/* User Dropdown */}
                   <div className="absolute top-full right-0 pt-2 w-48 hidden group-hover:block animate-fadeIn">

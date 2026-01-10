@@ -63,7 +63,7 @@ export function ShareMenu({ url, title, description }: ShareMenuProps) {
     ];
 
     return (
-        <div className="relative" ref={menuRef}>
+        <div className="relative z-40" ref={menuRef}>
             <button
                 onClick={(e) => {
                     e.stopPropagation();
@@ -75,7 +75,7 @@ export function ShareMenu({ url, title, description }: ShareMenuProps) {
             </button>
 
             {isOpen && (
-                <div className="absolute right-0 bottom-full mb-2 w-48 bg-white dark:bg-[#25282e] rounded-xl shadow-xl border border-gray-100 dark:border-[#32363e] overflow-hidden z-30 animate-scaleIn">
+                <div className="absolute right-0 bottom-12 w-48 bg-white dark:bg-[#25282e] rounded-xl shadow-2xl border border-gray-100 dark:border-[#32363e] z-[100] animate-scaleIn">
                     <div className="p-2">
                         <p className="text-xs font-bold text-slate-400 dark:text-gray-500 uppercase px-2 py-1">Share via</p>
                         {shareLinks.map((link) => (

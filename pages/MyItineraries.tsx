@@ -5,14 +5,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { SkeletonGrid } from '../components/Skeleton';
 import { NoTripsEmptyState, NoSavedTripsEmptyState, NoSearchResultsEmptyState } from '../components/EmptyState';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { ShareMenu } from '../components/ShareMenu';
 
 interface MyItinerariesProps {
   onNavigate: (view: any, data?: any) => void;
   t: any;
 }
 
-type Tab = 'upcoming' | 'past' | 'drafts' | 'favorites';
+type Tab = 'upcoming' | 'past' | 'favorites';
 
 export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
   const { user } = useAuth();
@@ -61,6 +60,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
           location: item.destination,
           startDate: item.start_date,
           endDate: item.end_date,
+          createdAt: item.created_at,
           isPublic: item.is_public,
           likes: item.likes,
         }));
@@ -97,6 +97,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
               location: it.destination,
               startDate: it.start_date,
               endDate: it.end_date,
+              createdAt: it.created_at,
               isPublic: it.is_public,
               likes: it.likes,
               author: {
@@ -122,9 +123,17 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
         setOpenMenuId(null);
       }
     }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpenMenuId(null);
+        setEditingTrip(null);
+      }
+    }
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
@@ -214,6 +223,68 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
     }
   };
 
+  const handleDuplicateTrip = async (e: React.MouseEvent, trip: Itinerary) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    if (!user) return;
+
+    try {
+      // Create new dates starting from today
+      const today = new Date();
+      const originalStart = new Date(trip.startDate);
+      const originalEnd = new Date(trip.endDate);
+      const duration = Math.ceil((originalEnd.getTime() - originalStart.getTime()) / (1000 * 60 * 60 * 24));
+
+      const newStartDate = today.toISOString().split('T')[0];
+      const newEndDate = new Date(today.getTime() + duration * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const newItinerary = {
+        user_id: user.id,
+        title: `${trip.title} (Copy)`,
+        destination: trip.location,
+        start_date: newStartDate,
+        end_date: newEndDate,
+        is_public: false,
+        likes: 0,
+        content: {
+          ...trip,
+          title: `${trip.title} (Copy)`,
+          startDate: newStartDate,
+          endDate: newEndDate,
+          isPublic: false,
+          likes: 0,
+        }
+      };
+
+      const { data, error } = await supabase
+        .from('itineraries')
+        .insert(newItinerary)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const duplicated: Itinerary = {
+          ...data.content,
+          id: data.id,
+          userId: data.user_id,
+          title: data.title,
+          location: data.destination,
+          startDate: data.start_date,
+          endDate: data.end_date,
+          isPublic: data.is_public,
+          likes: data.likes,
+        };
+        setItineraries(prev => [duplicated, ...prev]);
+        alert('Trip duplicated successfully!');
+      }
+    } catch (error) {
+      console.error('Error duplicating trip:', error);
+      alert('Failed to duplicate trip');
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!editingTrip) return;
 
@@ -285,12 +356,11 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
       now.setHours(0, 0, 0, 0); // Normalize today
 
       items = itineraries.filter(trip => {
-        if (!trip.endDate) return activeTab === 'upcoming'; // No date = upcoming/draft
+        if (!trip.endDate) return activeTab === 'upcoming'; // No date = upcoming
         const end = new Date(trip.endDate);
 
         if (activeTab === 'past') return end < now;
-        // Default everything else to upcoming/drafts bucket for now
-        if (activeTab === 'upcoming' || activeTab === 'drafts') return end >= now;
+        if (activeTab === 'upcoming') return end >= now;
         return false;
       });
     }
@@ -354,7 +424,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
 
       <div className="mb-8 border-b border-gray-200 dark:border-[#2a2e35]">
         <div className="flex gap-8 overflow-x-auto no-scrollbar">
-          {(['upcoming', 'past', 'drafts', 'favorites'] as const).map((tab) => (
+          {(['upcoming', 'past', 'favorites'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -380,7 +450,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Create New Card - Only show in Upcoming/Drafts */}
-          {(activeTab === 'upcoming' || activeTab === 'drafts') && (
+          {activeTab === 'upcoming' && (
             <button
               onClick={() => onNavigate('home')}
               className="group flex flex-col items-center justify-center bg-white dark:bg-[#1e2126] rounded-xl overflow-hidden border-2 border-dashed border-gray-300 dark:border-[#2a2e35] hover:border-primary dark:hover:border-primary transition-all duration-300 min-h-[400px]"
@@ -448,6 +518,13 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
                               {trip.isPublic ? t.unpublish : t.publish}
                             </button>
                             <button
+                              onClick={(e) => handleDuplicateTrip(e, trip)}
+                              className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2e35] flex items-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">content_copy</span>
+                              Duplicate
+                            </button>
+                            <button
                               onClick={(e) => handleEditClick(e, trip)}
                               className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2e35] flex items-center gap-2"
                             >
@@ -493,19 +570,14 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
                     <span className="px-2 py-1 bg-gray-100 dark:bg-[#2a2e35] text-slate-600 dark:text-gray-300 text-xs font-bold rounded">#Trip</span>
                   )}
                 </div>
-                <div className="mt-auto flex gap-3">
+                <div className="mt-auto">
                   <button
                     onClick={() => onNavigate('itinerary', trip)}
-                    className="flex-1 flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary text-primary hover:text-white font-bold py-2.5 rounded-lg transition-all duration-200"
+                    className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary text-primary hover:text-white font-bold py-2.5 rounded-lg transition-all duration-200"
                   >
                     <span>{t.view_plan}</span>
                     <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                   </button>
-                  <ShareMenu
-                    url={`${window.location.origin}/itinerary/${trip.id}`}
-                    title={trip.title}
-                    description={`Check out my trip to ${trip.location}!`}
-                  />
                 </div>
               </div>
             </div>
@@ -526,6 +598,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
                   className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none"
                 />
               </div>

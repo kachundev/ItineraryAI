@@ -63,6 +63,10 @@ function AppContent() {
         } finally {
           setIsLoadingSharedItinerary(false);
         }
+      } else if (path === '/' || path === '') {
+        // Handle root path - navigate to home
+        setCurrentView('home');
+        setSelectedItinerary(null);
       }
     };
 

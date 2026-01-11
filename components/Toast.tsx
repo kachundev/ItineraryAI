@@ -42,7 +42,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     );
 }
 
-function ToastItem({ toast, onClose }: { toast: ToastMessage; onClose: () => void }) {
+const ToastItem: React.FC<{ toast: ToastMessage; onClose: () => void }> = ({ toast, onClose }) => {
     useEffect(() => {
         const timer = setTimeout(onClose, 4000);
         return () => clearTimeout(timer);

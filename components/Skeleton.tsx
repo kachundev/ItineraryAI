@@ -4,7 +4,7 @@ interface SkeletonCardProps {
     variant?: 'grid' | 'list';
 }
 
-export function SkeletonCard({ variant = 'grid' }: SkeletonCardProps) {
+export const SkeletonCard: React.FC<SkeletonCardProps> = ({ variant = 'grid' }) => {
     return (
         <div className="bg-white dark:bg-[#1e2126] rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2e35] animate-pulse">
             {/* Image placeholder */}

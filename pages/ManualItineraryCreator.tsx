@@ -3,16 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Itinerary, DayPlan, Activity } from '../types';
 import { useToast } from '../components/Toast';
+import CustomDatePicker from '../components/CustomDatePicker';
 
-// Preset cover images for quick selection
-const PRESET_COVER_IMAGES = [
-    { url: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2021&auto=format&fit=crop', label: 'Road Trip' },
-    { url: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2070&auto=format&fit=crop', label: 'Beach' },
-    { url: 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?q=80&w=2020&auto=format&fit=crop', label: 'City' },
-    { url: 'https://images.unsplash.com/photo-1454391304352-2bf4678b1a7a?q=80&w=2074&auto=format&fit=crop', label: 'Mountain' },
-    { url: 'https://images.unsplash.com/photo-1528164344705-47542687000d?q=80&w=2069&auto=format&fit=crop', label: 'Culture' },
-    { url: 'https://images.unsplash.com/photo-1504150558240-0b4fd8946624?q=80&w=2064&auto=format&fit=crop', label: 'Adventure' },
-];
 
 // DayCard component for expandable day with activities
 interface DayCardProps {
@@ -22,7 +14,7 @@ interface DayCardProps {
     t: any;
 }
 
-function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
+const DayCard: React.FC<DayCardProps> = ({ day, dayIndex, onUpdateDay, t }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [newActivity, setNewActivity] = useState<Partial<Activity>>({
         time: '09:00',
@@ -119,7 +111,7 @@ function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
                     <div className="text-left">
                         <p className="font-bold text-slate-900 dark:text-white">{formatDate(day.date)}</p>
                         <p className="text-xs text-slate-500 dark:text-gray-400 flex items-center gap-2">
-                            <span>{day.activities.length} {day.activities.length === 1 ? 'activity' : 'activities'}</span>
+                            <span>{day.activities.length} {t.activity}</span>
                             {day.activities.length > 0 && (
                                 <span className="flex items-center gap-0.5 text-primary">
                                     <span className="material-symbols-outlined text-[14px]">schedule</span>
@@ -176,13 +168,13 @@ function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
                     <div className="bg-gray-50 dark:bg-[#252830] rounded-lg p-3 space-y-3">
                         {/* Activity Templates */}
                         <div>
-                            <p className="text-xs font-bold text-slate-600 dark:text-gray-400 uppercase tracking-wide mb-2">Quick Add</p>
+                            <p className="text-xs font-bold text-slate-600 dark:text-gray-400 uppercase tracking-wide mb-2">{t.quick_add}</p>
                             <div className="flex flex-wrap gap-2">
                                 {[
-                                    { icon: 'restaurant', label: 'Restaurant', type: 'meal', title: 'Meal' },
-                                    { icon: 'photo_camera', label: 'Attraction', type: 'sightseeing', title: 'Visit' },
-                                    { icon: 'directions_car', label: 'Transport', type: 'transport', title: 'Transport' },
-                                    { icon: 'hotel', label: 'Hotel', type: 'accommodation', title: 'Check-in' },
+                                    { icon: 'restaurant', label: t.restaurant, type: 'meal', title: t.template_breakfast },
+                                    { icon: 'photo_camera', label: t.attraction, type: 'sightseeing', title: t.template_sightseeing },
+                                    { icon: 'directions_car', label: t.template_transport, type: 'transport', title: t.template_transport },
+                                    { icon: 'hotel', label: t.hotel, type: 'accommodation', title: t.template_hotel },
                                 ].map((template) => (
                                     <button
                                         key={template.type}
@@ -199,7 +191,7 @@ function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
                             </div>
                         </div>
 
-                        <p className="text-xs font-bold text-slate-600 dark:text-gray-400 uppercase tracking-wide">Add Activity</p>
+                        <p className="text-xs font-bold text-slate-600 dark:text-gray-400 uppercase tracking-wide">{t.add_activity}</p>
                         <div className="grid grid-cols-[100px_1fr] gap-2">
                             <input
                                 type="time"
@@ -211,7 +203,7 @@ function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
                                 type="text"
                                 value={newActivity.title}
                                 onChange={(e) => setNewActivity({ ...newActivity, title: e.target.value })}
-                                placeholder="Activity name *"
+                                placeholder={t.activity_name}
                                 className="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-[#3a3e45] bg-white dark:bg-[#1e2126] text-slate-900 dark:text-white"
                             />
                         </div>
@@ -219,7 +211,7 @@ function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
                             type="text"
                             value={newActivity.location || ''}
                             onChange={(e) => setNewActivity({ ...newActivity, location: e.target.value })}
-                            placeholder="Location (optional)"
+                            placeholder={t.location_optional}
                             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-[#3a3e45] bg-white dark:bg-[#1e2126] text-slate-900 dark:text-white"
                         />
                         <div className="flex items-center gap-2">
@@ -229,21 +221,21 @@ function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
                                 onChange={(e) => setNewActivity({ ...newActivity, duration: e.target.value })}
                                 className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-[#3a3e45] bg-white dark:bg-[#1e2126] text-slate-900 dark:text-white"
                             >
-                                <option value="15">15 min</option>
-                                <option value="30">30 min</option>
-                                <option value="45">45 min</option>
-                                <option value="60">1 hour</option>
-                                <option value="90">1.5 hours</option>
-                                <option value="120">2 hours</option>
-                                <option value="180">3 hours</option>
-                                <option value="240">4 hours</option>
-                                <option value="300">5 hours</option>
+                                <option value="15">{t.min_15}</option>
+                                <option value="30">{t.min_30}</option>
+                                <option value="45">{t.min_45}</option>
+                                <option value="60">{t.hour_1}</option>
+                                <option value="90">{t.hour_1_5}</option>
+                                <option value="120">{t.hour_2}</option>
+                                <option value="180">{t.hour_3}</option>
+                                <option value="240">{t.hour_4}</option>
+                                <option value="300">{t.hour_5}</option>
                             </select>
                         </div>
                         <textarea
                             value={newActivity.description}
                             onChange={(e) => setNewActivity({ ...newActivity, description: e.target.value })}
-                            placeholder="Notes (optional)"
+                            placeholder={t.notes_optional}
                             rows={2}
                             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-[#3a3e45] bg-white dark:bg-[#1e2126] text-slate-900 dark:text-white resize-none"
                         />
@@ -253,7 +245,7 @@ function DayCard({ day, dayIndex, onUpdateDay, t }: DayCardProps) {
                             className="w-full py-2 rounded-lg bg-primary hover:bg-primary-hover disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
                         >
                             <span className="material-symbols-outlined text-lg">add</span>
-                            Add Activity
+                            {t.add_activity}
                         </button>
                     </div>
                 </div>
@@ -278,12 +270,12 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
     const [basicInfo, setBasicInfo] = useState({
         title: '',
         destination: '',
-        startDate: '',
-        endDate: '',
         description: '',
         budget: '$',
-        coverImage: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2021&auto=format&fit=crop',
+        coverImage: '',
     });
+    const [startDate, setStartDate] = useState<Date | null>(null);
+    const [endDate, setEndDate] = useState<Date | null>(null);
 
     // Days State
     const [days, setDays] = useState<DayPlan[]>([]);
@@ -298,6 +290,8 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
             try {
                 const draft = JSON.parse(savedDraft);
                 if (draft.basicInfo) setBasicInfo(draft.basicInfo);
+                if (draft.startDate) setStartDate(new Date(draft.startDate));
+                if (draft.endDate) setEndDate(new Date(draft.endDate));
                 if (draft.days) setDays(draft.days);
                 if (draft.step) setStep(draft.step);
                 showToast('info', 'Draft restored from previous session');
@@ -310,36 +304,27 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
     // Auto-save to localStorage when data changes
     useEffect(() => {
         if (basicInfo.title || basicInfo.destination || days.length > 0) {
-            const draft = { basicInfo, days, step };
+            const draft = {
+                basicInfo,
+                startDate: startDate?.toISOString(),
+                endDate: endDate?.toISOString(),
+                days,
+                step
+            };
             localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
         }
-    }, [basicInfo, days, step]);
+    }, [basicInfo, startDate, endDate, days, step]);
 
     const handleBasicInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-
-        // Date validation: ensure endDate >= startDate
-        if (name === 'endDate' && basicInfo.startDate && value) {
-            if (new Date(value) < new Date(basicInfo.startDate)) {
-                showToast('error', t.end_date_before_start || 'End date cannot be before start date');
-                return;
-            }
-        }
-        if (name === 'startDate' && basicInfo.endDate && value) {
-            if (new Date(basicInfo.endDate) < new Date(value)) {
-                showToast('error', t.start_date_after_end || 'Start date cannot be after end date');
-                return;
-            }
-        }
-
         setBasicInfo(prev => ({ ...prev, [name]: value }));
     };
 
     const calculateDays = () => {
-        if (!basicInfo.startDate || !basicInfo.endDate) return;
+        if (!startDate || !endDate) return;
 
-        const start = new Date(basicInfo.startDate);
-        const end = new Date(basicInfo.endDate);
+        const start = startDate;
+        const end = endDate;
         const diffTime = Math.abs(end.getTime() - start.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
@@ -364,12 +349,12 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
 
     const handleNextStep = () => {
         if (step === 1) {
-            if (!basicInfo.title || !basicInfo.destination || !basicInfo.startDate || !basicInfo.endDate) {
+            if (!basicInfo.title || !basicInfo.destination || !startDate || !endDate) {
                 showToast('warning', t.fill_all_fields || 'Please fill in all required fields');
                 return;
             }
             // Final date validation before proceeding
-            if (new Date(basicInfo.endDate) < new Date(basicInfo.startDate)) {
+            if (endDate < startDate) {
                 showToast('error', t.end_date_before_start || 'End date cannot be before start date');
                 return;
             }
@@ -386,11 +371,12 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
 
         try {
             setIsLoading(true);
+            const formatDateStr = (d: Date) => d.toISOString().split('T')[0];
             const itineraryData: Partial<Itinerary> = {
                 title: basicInfo.title,
                 location: basicInfo.destination,
-                startDate: basicInfo.startDate,
-                endDate: basicInfo.endDate,
+                startDate: formatDateStr(startDate!),
+                endDate: formatDateStr(endDate!),
                 description: basicInfo.description,
                 budget: basicInfo.budget,
                 coverImage: basicInfo.coverImage,
@@ -417,8 +403,8 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                     user_id: user.id,
                     title: basicInfo.title,
                     destination: basicInfo.destination,
-                    start_date: basicInfo.startDate,
-                    end_date: basicInfo.endDate,
+                    start_date: formatDateStr(startDate!),
+                    end_date: formatDateStr(endDate!),
                     content: content,
                     is_public: false
                 })
@@ -462,10 +448,10 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                         <h2 className="text-2xl font-bold text-white mb-2">{t.create_new_trip}</h2>
                         <div className="flex items-center justify-center gap-2 text-white/80 text-sm">
                             <span className={`flex items-center justify-center size-6 rounded-full border border-white/40 ${step >= 1 ? 'bg-white text-primary font-bold' : ''}`}>1</span>
-                            <span>Basic Info</span>
+                            <span>{t.step_basic_info}</span>
                             <span className="w-8 h-px bg-white/40"></span>
                             <span className={`flex items-center justify-center size-6 rounded-full border border-white/40 ${step >= 2 ? 'bg-white text-primary font-bold' : ''}`}>2</span>
-                            <span>Itinerary</span>
+                            <span>{t.step_itinerary}</span>
                         </div>
                     </div>
 
@@ -505,29 +491,29 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         <label className="block text-sm font-bold text-slate-700 dark:text-gray-300 mb-2">
                                             {t.start_date}
                                         </label>
-                                        <input
-                                            type="date"
-                                            name="startDate"
-                                            value={basicInfo.startDate}
-                                            min={new Date().toISOString().split('T')[0]}
-                                            max={basicInfo.endDate || undefined}
-                                            onChange={handleBasicInfoChange}
-                                            style={{ colorScheme: 'dark' }}
-                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#1e2126] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                                        <CustomDatePicker
+                                            selected={startDate}
+                                            onChange={(date) => {
+                                                setStartDate(date);
+                                                if (endDate && date && date > endDate) {
+                                                    setEndDate(null);
+                                                }
+                                            }}
+                                            minDate={new Date()}
+                                            placeholder={t.start_date}
+                                            icon="calendar_today"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 dark:text-gray-300 mb-2">
                                             {t.end_date}
                                         </label>
-                                        <input
-                                            type="date"
-                                            name="endDate"
-                                            value={basicInfo.endDate}
-                                            min={basicInfo.startDate || undefined}
-                                            onChange={handleBasicInfoChange}
-                                            style={{ colorScheme: 'dark' }}
-                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#1e2126] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                                        <CustomDatePicker
+                                            selected={endDate}
+                                            onChange={setEndDate}
+                                            minDate={startDate || new Date()}
+                                            placeholder={t.end_date}
+                                            icon="event"
                                         />
                                     </div>
                                 </div>
@@ -556,70 +542,80 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         onChange={handleBasicInfoChange}
                                         className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#1e2126] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
                                     >
-                                        <option value="$">Low ($)</option>
-                                        <option value="$$">Medium ($$)</option>
-                                        <option value="$$$">High ($$$)</option>
-                                        <option value="$$$$">Luxury ($$$$)</option>
+                                        <option value="$">{t.budget_low}</option>
+                                        <option value="$$">{t.budget_medium}</option>
+                                        <option value="$$$">{t.budget_high}</option>
+                                        <option value="$$$$">{t.budget_luxury}</option>
                                     </select>
                                 </div>
 
-                                {/* Cover Image Picker */}
+                                {/* Cover Image Upload */}
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 dark:text-gray-300 mb-2">
-                                        Cover Image
+                                        {t.cover_image}
                                     </label>
 
                                     {/* Current preview */}
-                                    <div className="relative mb-4 rounded-xl overflow-hidden h-40 bg-gray-100 dark:bg-[#1e2126]">
-                                        <img
-                                            src={basicInfo.coverImage}
-                                            alt="Cover preview"
-                                            className="w-full h-full object-cover"
-                                            onError={(e) => {
-                                                (e.target as HTMLImageElement).src = PRESET_COVER_IMAGES[0].url;
-                                            }}
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                                        <span className="absolute bottom-3 left-3 text-white text-sm font-medium flex items-center gap-1">
-                                            <span className="material-symbols-outlined text-[18px]">image</span>
-                                            Preview
-                                        </span>
-                                    </div>
-
-                                    {/* Preset images grid */}
-                                    <p className="text-xs text-slate-500 dark:text-gray-400 mb-2">Choose a preset:</p>
-                                    <div className="grid grid-cols-3 gap-2 mb-3">
-                                        {PRESET_COVER_IMAGES.map((img, idx) => (
+                                    {basicInfo.coverImage ? (
+                                        <div className="relative mb-4 rounded-xl overflow-hidden h-40 bg-gray-100 dark:bg-[#1e2126]">
+                                            <img
+                                                src={basicInfo.coverImage}
+                                                alt="Cover preview"
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                                             <button
-                                                key={idx}
                                                 type="button"
-                                                onClick={() => setBasicInfo(prev => ({ ...prev, coverImage: img.url }))}
-                                                className={`relative h-16 rounded-lg overflow-hidden transition-all ${basicInfo.coverImage === img.url
-                                                    ? 'ring-2 ring-primary ring-offset-2 dark:ring-offset-card-dark'
-                                                    : 'hover:opacity-80'
-                                                    }`}
+                                                onClick={() => setBasicInfo(prev => ({ ...prev, coverImage: '' }))}
+                                                className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 transition-colors"
                                             >
-                                                <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                                    <span className="text-white text-xs font-medium">{img.label}</span>
-                                                </div>
-                                                {basicInfo.coverImage === img.url && (
-                                                    <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
-                                                        <span className="material-symbols-outlined text-white text-[14px]">check</span>
-                                                    </div>
-                                                )}
+                                                <span className="material-symbols-outlined text-[18px]">close</span>
                                             </button>
-                                        ))}
-                                    </div>
+                                            <span className="absolute bottom-3 left-3 text-white text-sm font-medium flex items-center gap-1">
+                                                <span className="material-symbols-outlined text-[18px]">image</span>
+                                                {t.preview}
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <label className="relative mb-4 rounded-xl overflow-hidden h-40 bg-gray-100 dark:bg-[#1e2126] border-2 border-dashed border-gray-300 dark:border-[#3a3e45] hover:border-primary dark:hover:border-primary cursor-pointer flex flex-col items-center justify-center gap-2 transition-colors">
+                                            <span className="material-symbols-outlined text-4xl text-gray-400 dark:text-gray-500">cloud_upload</span>
+                                            <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t.click_to_upload}</span>
+                                            <span className="text-xs text-gray-400 dark:text-gray-500">{t.image_format_hint}</span>
+                                            <input
+                                                type="file"
+                                                accept="image/jpeg,image/png,image/webp"
+                                                className="hidden"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
 
-                                    {/* Custom URL input */}
+                                                    if (file.size > 5 * 1024 * 1024) {
+                                                        showToast('error', t.image_too_large);
+                                                        return;
+                                                    }
+
+                                                    // Convert to base64 for preview (in production, upload to storage)
+                                                    const reader = new FileReader();
+                                                    reader.onload = (event) => {
+                                                        if (event.target?.result) {
+                                                            setBasicInfo(prev => ({ ...prev, coverImage: event.target!.result as string }));
+                                                        }
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                }}
+                                            />
+                                        </label>
+                                    )}
+
+                                    {/* Or paste URL */}
                                     <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-500 dark:text-gray-400">{t.or}</span>
                                         <input
                                             type="text"
                                             name="coverImage"
-                                            value={basicInfo.coverImage}
+                                            value={basicInfo.coverImage.startsWith('data:') ? '' : basicInfo.coverImage}
                                             onChange={handleBasicInfoChange}
-                                            placeholder="Or paste a custom image URL..."
+                                            placeholder={t.paste_image_url}
                                             className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#1e2126] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
                                         />
                                     </div>
@@ -636,7 +632,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         onClick={handleNextStep}
                                         className="px-6 py-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold transition-colors shadow-lg shadow-primary/20"
                                     >
-                                        Next Step
+                                        {t.next_step}
                                     </button>
                                 </div>
                             </div>
@@ -649,37 +645,40 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         {basicInfo.title}
                                     </h3>
                                     <p className="text-slate-500 dark:text-gray-400 text-sm mt-1">
-                                        {basicInfo.startDate} - {basicInfo.endDate} • {days.length} Days
+                                        {startDate?.toLocaleDateString()} - {endDate?.toLocaleDateString()} • {days.length} Days
                                     </p>
                                 </div>
 
                                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-xl p-3 flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
                                     <span className="material-symbols-outlined text-lg">tips_and_updates</span>
-                                    Click on each day to expand and add activities!
+                                    {t.click_expand_tip}
                                 </div>
 
                                 {/* Preview Card */}
                                 <div className="bg-gray-50 dark:bg-[#252830] rounded-xl p-4">
                                     <p className="text-xs font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1">
                                         <span className="material-symbols-outlined text-sm">visibility</span>
-                                        Preview
+                                        {t.preview}
                                     </p>
                                     <div className="relative rounded-xl overflow-hidden bg-white dark:bg-[#1e2126] shadow-md">
-                                        <div className="h-32 relative">
-                                            <img
-                                                src={basicInfo.coverImage}
-                                                alt="Cover"
-                                                className="w-full h-full object-cover"
-                                                onError={(e) => {
-                                                    (e.target as HTMLImageElement).src = PRESET_COVER_IMAGES[0].url;
-                                                }}
-                                            />
+                                        <div className="h-32 relative bg-gray-200 dark:bg-[#2a2e35]">
+                                            {basicInfo.coverImage ? (
+                                                <img
+                                                    src={basicInfo.coverImage}
+                                                    alt="Cover"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center">
+                                                    <span className="material-symbols-outlined text-4xl text-gray-400">image</span>
+                                                </div>
+                                            )}
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                                             <div className="absolute bottom-3 left-3 right-3">
-                                                <h4 className="text-white font-bold text-lg truncate">{basicInfo.title || 'Untitled Trip'}</h4>
+                                                <h4 className="text-white font-bold text-lg truncate">{basicInfo.title || t.untitled_trip}</h4>
                                                 <p className="text-white/80 text-xs flex items-center gap-1">
                                                     <span className="material-symbols-outlined text-[14px]">location_on</span>
-                                                    {basicInfo.destination || 'Destination'}
+                                                    {basicInfo.destination || t.destination_label}
                                                 </p>
                                             </div>
                                         </div>
@@ -691,7 +690,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                                 </span>
                                                 <span className="flex items-center gap-1">
                                                     <span className="material-symbols-outlined text-[14px]">list</span>
-                                                    {days.reduce((sum, d) => sum + d.activities.length, 0)} activities
+                                                    {days.reduce((sum, d) => sum + d.activities.length, 0)} {t.activities}
                                                 </span>
                                             </div>
                                             <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
@@ -721,7 +720,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         onClick={() => setStep(1)}
                                         className="px-6 py-3 rounded-xl font-bold text-slate-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2a2e35] transition-colors"
                                     >
-                                        Back
+                                        {t.back}
                                     </button>
                                     <button
                                         onClick={handleSaveItinerary}
@@ -731,12 +730,12 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         {isLoading ? (
                                             <>
                                                 <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
-                                                Creating...
+                                                {t.creating}
                                             </>
                                         ) : (
                                             <>
                                                 <span className="material-symbols-outlined text-[20px]">save</span>
-                                                Save Itinerary
+                                                {t.save_itinerary}
                                             </>
                                         )}
                                     </button>

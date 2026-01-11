@@ -102,3 +102,104 @@ html.dark input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(1) brightness(1.2);
   opacity: 0.9;
 }
+
+/* Style the date picker popup (Chromium browsers) */
+::-webkit-datetime-edit {
+  padding: 0.25rem;
+}
+
+::-webkit-datetime-edit-fields-wrapper {
+  background: transparent;
+}
+
+::-webkit-calendar-picker-indicator {
+  border-radius: 4px;
+  padding: 4px;
+  transition: background 0.2s;
+}
+
+::-webkit-calendar-picker-indicator:hover {
+  background: rgba(238, 140, 43, 0.2);
+}
+
+/* React Day Picker Styles */
+.custom-day-picker {
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.custom-day-picker .rdp-root {
+  --rdp-accent-color: #ee8c2b;
+  --rdp-accent-background-color: rgba(238, 140, 43, 0.1);
+}
+
+.custom-day-picker .rdp-month_caption {
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0.5rem;
+}
+
+.custom-day-picker .rdp-weekday {
+  color: #9ca3af;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.custom-day-picker .rdp-day {
+  color: white;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.custom-day-picker .rdp-day:hover:not(.rdp-day_disabled) {
+  background: #ee8c2b;
+  color: white;
+}
+
+.custom-day-picker .rdp-day_selected {
+  background: #ee8c2b !important;
+  color: white !important;
+  font-weight: 700;
+}
+
+.custom-day-picker .rdp-day_today {
+  border: 2px solid #ee8c2b;
+  font-weight: 700;
+}
+
+.custom-day-picker .rdp-day_disabled {
+  color: #4a5058;
+  opacity: 0.5;
+}
+
+.custom-day-picker .rdp-day_outside {
+  color: #4a5058;
+}
+
+.custom-day-picker .rdp-button_previous,
+.custom-day-picker .rdp-button_next {
+  color: white;
+}
+
+.custom-day-picker .rdp-button_previous:hover,
+.custom-day-picker .rdp-button_next:hover {
+  color: #ee8c2b;
+}
+
+/* Light mode overrides */
+:root:not(.dark) .custom-day-picker .rdp-month_caption {
+  color: #1f2937;
+}
+
+:root:not(.dark) .custom-day-picker .rdp-day {
+  color: #1f2937;
+}
+
+:root:not(.dark) .custom-day-picker .rdp-day_outside {
+  color: #9ca3af;
+}
+
+:root:not(.dark) .custom-day-picker .rdp-button_previous,
+:root:not(.dark) .custom-day-picker .rdp-button_next {
+  color: #1f2937;
+}

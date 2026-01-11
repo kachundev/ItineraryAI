@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { generateItinerary } from '../services/geminiService';
 import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
+import CustomDatePicker from '../components/CustomDatePicker';
 
 interface HomeProps {
   onNavigate: (view: any, data?: any) => void;
@@ -11,8 +12,8 @@ interface HomeProps {
 
 export default function Home({ onNavigate, lang, t }: HomeProps) {
   const [destination, setDestination] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
   const [specialRequests, setSpecialRequests] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -36,7 +37,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
     e.preventDefault();
     if (!destination || !startDate || !endDate) return;
 
-    if (new Date(endDate) < new Date(startDate)) {
+    if (endDate < startDate) {
       setError('End date cannot be earlier than start date');
       return;
     }
@@ -45,9 +46,9 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
     setError('');
 
     try {
-      // Pass empty array for preferences as the UI section is removed
-      // Pass the current language to the service
-      const itinerary = await generateItinerary(destination, startDate, endDate, [], specialRequests, lang);
+      // Format dates as strings for the API
+      const formatDate = (d: Date) => d.toISOString().split('T')[0];
+      const itinerary = await generateItinerary(destination, formatDate(startDate), formatDate(endDate), [], specialRequests, lang);
       onNavigate('itinerary', itinerary);
     } catch (err: any) {
       console.error(err);
@@ -104,41 +105,29 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-gray-300 uppercase tracking-wide">{t.start_date}</label>
-                  <div className="relative flex items-center group">
-                    <div className="absolute left-4 text-primary group-focus-within:scale-110 transition-transform">
-                      <span className="material-symbols-outlined">calendar_today</span>
-                    </div>
-                    <input
-                      type="date"
-                      value={startDate}
-                      min={new Date().toISOString().split('T')[0]} // Prevent selecting past dates
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
-                        // Reset end date if it becomes invalid
-                        if (endDate && e.target.value > endDate) {
-                          setEndDate('');
-                        }
-                      }}
-                      className="w-full rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#16181d] py-4 pl-12 pr-4 text-base font-medium text-slate-900 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                      required
-                    />
-                  </div>
+                  <CustomDatePicker
+                    selected={startDate}
+                    onChange={(date) => {
+                      setStartDate(date);
+                      // Reset end date if it becomes invalid
+                      if (endDate && date && date > endDate) {
+                        setEndDate(null);
+                      }
+                    }}
+                    minDate={new Date()}
+                    placeholder={t.start_date}
+                    icon="calendar_today"
+                  />
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-gray-300 uppercase tracking-wide">{t.end_date}</label>
-                  <div className="relative flex items-center group">
-                    <div className="absolute left-4 text-primary group-focus-within:scale-110 transition-transform">
-                      <span className="material-symbols-outlined">event</span>
-                    </div>
-                    <input
-                      type="date"
-                      value={endDate}
-                      min={startDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#16181d] py-4 pl-12 pr-4 text-base font-medium text-slate-900 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                      required
-                    />
-                  </div>
+                  <CustomDatePicker
+                    selected={endDate}
+                    onChange={setEndDate}
+                    minDate={startDate || new Date()}
+                    placeholder={t.end_date}
+                    icon="event"
+                  />
                 </div>
               </div>
 

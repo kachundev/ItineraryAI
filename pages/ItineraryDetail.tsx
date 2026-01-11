@@ -190,20 +190,20 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
     if (!itinerary?.id) return;
 
     if (isLiked) {
+      // Delete the like record - trigger will auto-decrement count
       await supabase
         .from('itinerary_likes')
         .delete()
         .match({ user_id: user.id, itinerary_id: itinerary.id });
       setIsLiked(false);
       setLikeCount(prev => Math.max(0, prev - 1));
-      await supabase.rpc('decrement_likes', { itinerary_id: itinerary.id });
     } else {
+      // Insert like record - trigger will auto-increment count
       await supabase
         .from('itinerary_likes')
         .insert({ user_id: user.id, itinerary_id: itinerary.id });
       setIsLiked(true);
       setLikeCount(prev => prev + 1);
-      await supabase.rpc('increment_likes', { itinerary_id: itinerary.id });
     }
   };
 

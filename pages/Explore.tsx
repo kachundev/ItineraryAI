@@ -24,7 +24,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<SortCategory>('newest');
-  const [activeTag, setActiveTag] = useState<string>('All');
+  const [activeTag, setActiveTag] = useState<string>('all');
   const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
 
   // Get unique tags from all itineraries
@@ -33,7 +33,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
     itineraries.forEach(item => {
       item.tags?.forEach(tag => tagSet.add(tag));
     });
-    return ['All', ...Array.from(tagSet).slice(0, 8)];
+    return ['all', ...Array.from(tagSet).slice(0, 8)];
   }, [itineraries]);
 
   // Filter and sort itineraries
@@ -52,7 +52,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
     }
 
     // Apply tag filter
-    if (activeTag !== 'All') {
+    if (activeTag !== 'all') {
       result = result.filter(item =>
         item.tags?.some(tag => tag.toLowerCase() === activeTag.toLowerCase())
       );
@@ -245,9 +245,9 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffDays > 0) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    if (diffHours > 0) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    return 'Just now';
+    if (diffDays > 0) return `${diffDays} ${diffDays > 1 ? t.days : t.day} ${t.ago}`;
+    if (diffHours > 0) return `${diffHours} ${diffHours > 1 ? t.hours : t.hour} ${t.ago}`;
+    return t.just_now;
   };
 
   return (
@@ -285,9 +285,9 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
           <div className="flex flex-col gap-2">
             <h3 className="font-bold text-sm uppercase text-slate-400 dark:text-gray-500 tracking-wider mb-2">{t.categories}</h3>
             {([
-              { id: 'trending', label: 'Trending', icon: 'trending_up' },
-              { id: 'newest', label: 'Newest', icon: 'schedule' },
-              { id: 'top-rated', label: 'Top Rated', icon: 'star' },
+              { id: 'trending', label: t.trending, icon: 'trending_up' },
+              { id: 'newest', label: t.newest, icon: 'schedule' },
+              { id: 'top-rated', label: t.top_rated, icon: 'star' },
             ] as const).map((cat) => (
               <button
                 key={cat.id}
@@ -332,7 +332,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
                 onClick={() => setActiveTag(tag)}
                 className={`px-4 py-2 rounded-full text-sm font-medium border whitespace-nowrap transition-colors ${activeTag === tag ? 'bg-white dark:bg-[#1e2126] border-primary text-primary font-bold' : 'bg-transparent border-transparent hover:bg-gray-100 dark:hover:bg-[#1e2126] text-slate-600 dark:text-gray-400'}`}
               >
-                {tag}
+                {tag === 'all' ? t.all : tag}
               </button>
             ))}
           </div>
@@ -405,7 +405,7 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
           {!loading && filteredItineraries.length > displayCount && (
             <div className="flex flex-col items-center gap-2 mt-12">
               <p className="text-sm text-slate-500 dark:text-gray-400">
-                Showing {Math.min(displayCount, filteredItineraries.length)} of {filteredItineraries.length} trips
+                {t.showing_of} {Math.min(displayCount, filteredItineraries.length)} {t.of_trips} {filteredItineraries.length} {t.trips_word}
               </p>
               <button
                 onClick={() => setDisplayCount(prev => prev + ITEMS_PER_PAGE)}

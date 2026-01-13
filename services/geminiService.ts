@@ -22,7 +22,6 @@ export const generateItinerary = async (
 
   if (error) {
     console.error("Edge Function error:", error);
-    // Try to get more details from the response body
     if (error.context?.body && error.context.body instanceof ReadableStream) {
       try {
         const reader = error.context.body.getReader();
@@ -47,7 +46,6 @@ export const generateItinerary = async (
 
   console.log("Edge Function response:", data);
 
-  // Handle case where response is an array (Gemini sometimes returns array)
   const responseData = Array.isArray(data) ? data[0] : data;
 
   if (responseData?.error) {
@@ -55,9 +53,8 @@ export const generateItinerary = async (
     throw new Error(responseData.error);
   }
 
-  // Merge Gemini response with required Itinerary fields
   const itinerary: Itinerary = {
-    id: `temp-${Date.now()}`, // Temporary ID until saved to DB
+    id: `temp-${Date.now()}`,
     title: responseData.title || `${destination} Trip`,
     location: destination,
     startDate: startDate,
@@ -65,7 +62,7 @@ export const generateItinerary = async (
     days: responseData.days || [],
     budget: responseData.budget || 'Medium',
     description: responseData.description || '',
-    coverImage: undefined, // No cover image
+    coverImage: undefined,
     generated: true,
     author: {
       name: 'AI',

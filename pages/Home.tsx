@@ -17,6 +17,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
   const [specialRequests, setSpecialRequests] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
   const [trendingItineraries, setTrendingItineraries] = useState<any[]>([]);
 
   // Fetch trending itineraries

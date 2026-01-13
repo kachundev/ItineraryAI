@@ -34,6 +34,9 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 const { error } = await supabase.auth.signUp({
                     email,
                     password,
+                    options: {
+                        emailRedirectTo: `${window.location.origin}/`,
+                    },
                 });
                 if (error) throw error;
                 setMessage('Registration successful! Please check your email to confirm your account.');

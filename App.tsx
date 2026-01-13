@@ -201,7 +201,7 @@ function AppContent() {
             {!user ? (
               <button
                 onClick={() => setIsAuthModalOpen(true)}
-                className="hidden sm:flex h-10 px-6 items-center justify-center rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-bold transition-all shadow-md hover:shadow-lg hover:shadow-primary/20"
+                className="flex h-10 px-4 sm:px-6 items-center justify-center rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-bold transition-all shadow-md hover:shadow-lg hover:shadow-primary/20"
               >
                 {t.sign_in}
               </button>

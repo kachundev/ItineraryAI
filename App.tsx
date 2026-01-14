@@ -248,16 +248,49 @@ function AppContent() {
                 </div>
               </>
             )}
-            <button className="md:hidden text-slate-900 dark:text-white" onClick={() => navigate('explore')}>
-              <span className="material-symbols-outlined">menu</span>
-            </button>
           </div>
         </div>
       </header>
 
-      <main className="w-full">
+      <main className="w-full pb-16 md:pb-0">
         {renderView()}
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white dark:bg-[#16181d] border-t border-[#e5e7eb] dark:border-[#2a2e35]">
+        <div className="flex items-center justify-around h-16">
+          <button
+            onClick={() => navigate('home')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${currentView === 'home' ? 'text-primary' : 'text-slate-500 dark:text-gray-400'}`}
+          >
+            <span className="material-symbols-outlined text-[24px]">home</span>
+            <span className="text-xs font-medium mt-0.5">{t.nav_home}</span>
+          </button>
+          <button
+            onClick={() => navigate('explore')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${currentView === 'explore' ? 'text-primary' : 'text-slate-500 dark:text-gray-400'}`}
+          >
+            <span className="material-symbols-outlined text-[24px]">explore</span>
+            <span className="text-xs font-medium mt-0.5">{t.nav_explore}</span>
+          </button>
+          {user && (
+            <button
+              onClick={() => navigate('my-trips')}
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${currentView === 'my-trips' ? 'text-primary' : 'text-slate-500 dark:text-gray-400'}`}
+            >
+              <span className="material-symbols-outlined text-[24px]">luggage</span>
+              <span className="text-xs font-medium mt-0.5">{t.nav_my_trips}</span>
+            </button>
+          )}
+          <button
+            onClick={() => user ? navigate('profile') : setIsAuthModalOpen(true)}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${currentView === 'profile' ? 'text-primary' : 'text-slate-500 dark:text-gray-400'}`}
+          >
+            <span className="material-symbols-outlined text-[24px]">person</span>
+            <span className="text-xs font-medium mt-0.5">{user ? t.nav_profile || 'Profile' : t.sign_in}</span>
+          </button>
+        </div>
+      </nav>
 
       {/* Simple Footer */}
       <footer className="border-t border-[#e5e7eb] dark:border-[#2a2e35] bg-white dark:bg-[#16181d] py-8 text-center mt-auto">

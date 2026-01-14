@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Itinerary, Activity, RestaurantOption, DayPlan } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -56,6 +56,7 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ option, index, t }) => 
 export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: ItineraryDetailProps) {
   const { user } = useAuth();
   const [activeDay, setActiveDay] = useState(0);
+  const dailyPlanRef = useRef<HTMLDivElement>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -549,7 +550,13 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                 {displayItinerary.days.map((day, index) => (
                   <button
                     key={day.day}
-                    onClick={() => setActiveDay(index)}
+                    onClick={() => {
+                      setActiveDay(index);
+                      // Scroll to daily plan section after a short delay to allow render
+                      setTimeout(() => {
+                        dailyPlanRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 50);
+                    }}
                     className={`flex-shrink-0 px-6 py-2.5 rounded-full font-bold text-sm transition-all duration-200 whitespace-nowrap ${activeDay === index
                       ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-105'
                       : 'bg-white dark:bg-[#1e2126] text-slate-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2e35] hover:border-primary dark:hover:border-primary hover:text-primary'
@@ -571,7 +578,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
             </div>
 
             {/* Daily Plan */}
-            <div className="space-y-8 min-h-[500px]">
+            <div ref={dailyPlanRef} className="space-y-8 min-h-[500px] scroll-mt-32">
               <div className="flex items-center gap-3 animate-fadeIn">
                 <span className="material-symbols-outlined text-2xl text-primary">wb_sunny</span>
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white flex-1">

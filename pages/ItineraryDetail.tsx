@@ -371,6 +371,24 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
     await persistChanges(updatedItinerary);
   };
 
+  // Add a new day
+  const handleAddDay = async () => {
+    if (!localItinerary) return;
+
+    const updatedItinerary = JSON.parse(JSON.stringify(localItinerary));
+    const newDayNumber = updatedItinerary.days.length + 1;
+
+    updatedItinerary.days.push({
+      day: newDayNumber,
+      title: `Day ${newDayNumber}`,
+      activities: []
+    });
+
+    setLocalItinerary(updatedItinerary);
+    setActiveDay(newDayNumber - 1); // Switch to the new day
+    await persistChanges(updatedItinerary);
+  };
+
   // Toggle edit mode and sync changes to parent when exiting
   const handleToggleEditMode = () => {
     if (isEditMode && localItinerary) {
@@ -540,6 +558,15 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                     {t.day_prefix}{day.day}{t.day_suffix}
                   </button>
                 ))}
+                {isEditMode && (
+                  <button
+                    onClick={handleAddDay}
+                    className="flex-shrink-0 px-4 py-2.5 rounded-full font-bold text-sm transition-all duration-200 whitespace-nowrap border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary dark:hover:border-primary text-slate-500 dark:text-gray-400 hover:text-primary flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    {t.add_day || 'Add Day'}
+                  </button>
+                )}
               </div>
             </div>
 

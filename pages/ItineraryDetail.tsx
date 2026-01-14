@@ -528,7 +528,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
             {/* Day Tabs */}
             <div className="sticky top-[72px] bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md py-4 z-20 border-b border-gray-200 dark:border-[#2a2e35] -mx-4 px-4 lg:mx-0 lg:px-0">
               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
-                {itinerary.days.map((day, index) => (
+                {displayItinerary.days.map((day, index) => (
                   <button
                     key={day.day}
                     onClick={() => setActiveDay(index)}

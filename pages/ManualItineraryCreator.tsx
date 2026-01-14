@@ -294,7 +294,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                 if (draft.endDate) setEndDate(new Date(draft.endDate));
                 if (draft.days) setDays(draft.days);
                 if (draft.step) setStep(draft.step);
-                showToast('info', 'Draft restored from previous session');
+                showToast('info', t.draft_restored_message || 'Draft restored from previous session');
             } catch (e) {
                 console.error('Failed to restore draft:', e);
             }
@@ -365,7 +365,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
 
     const handleSaveItinerary = async () => {
         if (!user) {
-            showToast('warning', t.login_to_save || 'Please log in to save your itinerary');
+            showToast('warning', t.login_required_save || 'Please log in to save your itinerary');
             return;
         }
 
@@ -425,7 +425,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                 ...itineraryData,
                 ...content,
                 author: {
-                    name: user.user_metadata?.full_name || user.email || 'Me',
+                    name: user.user_metadata?.full_name || user.email || t.author_me || 'Me',
                     avatar: user.user_metadata?.avatar_url || ''
                 }
             } as Itinerary;
@@ -468,7 +468,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         value={basicInfo.title}
                                         onChange={handleBasicInfoChange}
                                         className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#1e2126] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                                        placeholder="e.g. Summer in Tokyo"
+                                        placeholder={t.placeholder_trip_title}
                                     />
                                 </div>
 
@@ -482,7 +482,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         value={basicInfo.destination}
                                         onChange={handleBasicInfoChange}
                                         className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#1e2126] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                                        placeholder="e.g. Tokyo, Japan"
+                                        placeholder={t.placeholder_destination}
                                     />
                                 </div>
 
@@ -528,7 +528,7 @@ export default function ManualItineraryCreator({ onNavigate, t }: ManualItinerar
                                         onChange={handleBasicInfoChange}
                                         rows={4}
                                         className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#1e2126] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all resize-none"
-                                        placeholder="Describe your trip..."
+                                        placeholder={t.placeholder_description}
                                     />
                                 </div>
 

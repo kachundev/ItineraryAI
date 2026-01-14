@@ -302,7 +302,7 @@ function AppContent() {
         <p className="text-sm text-slate-500 dark:text-gray-500">© 2024 Itinerary AI. All rights reserved.</p>
       </footer>
 
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} t={t} />
     </div>
   );
 }

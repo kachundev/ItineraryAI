@@ -290,7 +290,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
       // Note: Don't call onSave here to avoid navigation - we want to stay on this page
     } catch (error) {
       console.error('Error updating itinerary:', error);
-      alert('Failed to save changes.');
+      alert(t.save_changes_error || 'Failed to save changes.');
     } finally {
       setIsUpdating(false);
     }
@@ -818,7 +818,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
             <div className="flex gap-4 mb-8">
               <img
                 src={user.user_metadata?.avatar_url || `https://i.pravatar.cc/150?u=${user.id}`}
-                alt="You"
+                alt={t.you || "You"}
                 className="size-10 rounded-full shrink-0"
               />
               <div className="flex-1">
@@ -859,12 +859,12 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                 <div key={comment.id} className="flex gap-4">
                   <img
                     src={comment.profiles?.avatar_url || `https://i.pravatar.cc/150?u=${comment.user_id}`}
-                    alt={comment.profiles?.full_name || 'User'}
+                    alt={comment.profiles?.full_name || t.user_alt || 'User'}
                     className="size-10 rounded-full shrink-0"
                   />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-slate-900 dark:text-white">{comment.profiles?.full_name || 'Anonymous'}</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{comment.profiles?.full_name || t.anonymous_user || 'Anonymous'}</span>
                       <span className="text-xs text-slate-400 dark:text-gray-500">
                         {new Date(comment.created_at).toLocaleDateString()}
                       </span>
@@ -904,7 +904,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                     type="text"
                     value={activityForm.type}
                     onChange={(e) => setActivityForm({ ...activityForm, type: e.target.value })}
-                    placeholder="e.g., sightseeing"
+                    placeholder={t.activity_type_placeholder || "e.g., sightseeing"}
                     className="w-full bg-gray-50 dark:bg-[#25282e] border border-gray-200 dark:border-[#32363e] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none"
                   />
                 </div>

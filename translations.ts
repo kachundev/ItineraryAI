@@ -193,7 +193,35 @@ export const translations = {
     add_day: "Add Day",
     nav_profile: "Profile",
     comment_error: "Failed to post comment",
-    removed_from_saved: "Removed from saved trips"
+    removed_from_saved: "Removed from saved trips",
+    // ManualItineraryCreator
+    placeholder_trip_title: "e.g. Summer in Tokyo",
+    placeholder_destination: "e.g. Tokyo, Japan",
+    placeholder_description: "Describe your trip...",
+    draft_restored_message: "Draft restored from previous session",
+    login_required_save: "Please log in to save your itinerary",
+    author_me: "Me",
+    // AuthModal
+    welcome_back: "Welcome Back",
+    create_account: "Create Account",
+    registration_success: "Registration successful! Please check your email to confirm your account.",
+    email_label: "Email",
+    password_label: "Password",
+    email_placeholder: "name@example.com",
+    no_account: "Don't have an account?",
+    has_account: "Already have an account?",
+    sign_up: "Sign Up",
+    // Profile
+    no_bio: "No bio yet.",
+    update_profile_error: "Failed to update profile",
+    upload_image_error: "Error uploading image",
+    default_name_traveler: "Traveler",
+    // ItineraryDetail
+    save_changes_error: "Failed to save changes.",
+    activity_type_placeholder: "e.g. sightseeing",
+    anonymous_user: "Anonymous",
+    you: "You",
+    user_alt: "User"
   },
   "zh-TW": {
     nav_home: "首頁",
@@ -388,7 +416,35 @@ export const translations = {
     add_day: "新增一天",
     nav_profile: "個人資料",
     comment_error: "發佈留言失敗",
-    removed_from_saved: "已從收藏中移除"
+    removed_from_saved: "已從收藏中移除",
+    // ManualItineraryCreator
+    placeholder_trip_title: "例如：東京夏日之旅",
+    placeholder_destination: "例如：日本東京",
+    placeholder_description: "描述您的旅程...",
+    draft_restored_message: "已從上次的工作階段還原草稿",
+    login_required_save: "請登入以儲存您的行程",
+    author_me: "我",
+    // AuthModal
+    welcome_back: "歡迎回來",
+    create_account: "建立帳戶",
+    registration_success: "註冊成功！請檢查您的電子郵件以確認帳戶。",
+    email_label: "電子郵件",
+    password_label: "密碼",
+    email_placeholder: "name@example.com",
+    no_account: "還沒有帳戶？",
+    has_account: "已經有帳戶？",
+    sign_up: "註冊",
+    // Profile
+    no_bio: "尚無自我介紹。",
+    update_profile_error: "更新個人資料失敗",
+    upload_image_error: "上傳圖片失敗",
+    default_name_traveler: "旅客",
+    // ItineraryDetail
+    save_changes_error: "儲存變更失敗。",
+    activity_type_placeholder: "例如：觀光",
+    anonymous_user: "匿名",
+    you: "您",
+    user_alt: "使用者"
   },
   "zh-CN": {
     nav_home: "首页",
@@ -583,7 +639,35 @@ export const translations = {
     add_day: "添加一天",
     nav_profile: "个人资料",
     comment_error: "发布评论失败",
-    removed_from_saved: "已从收藏中移除"
+    removed_from_saved: "已从收藏中移除",
+    // ManualItineraryCreator
+    placeholder_trip_title: "例如：东京夏日之旅",
+    placeholder_destination: "例如：日本东京",
+    placeholder_description: "描述您的旅程...",
+    draft_restored_message: "已从上次会话恢复草稿",
+    login_required_save: "请登录以保存您的行程",
+    author_me: "我",
+    // AuthModal
+    welcome_back: "欢迎回来",
+    create_account: "创建账户",
+    registration_success: "注册成功！请检查您的电子邮件以确认账户。",
+    email_label: "电子邮件",
+    password_label: "密码",
+    email_placeholder: "name@example.com",
+    no_account: "还没有账户？",
+    has_account: "已经有账户？",
+    sign_up: "注册",
+    // Profile
+    no_bio: "尚无自我介绍。",
+    update_profile_error: "更新个人资料失败",
+    upload_image_error: "上传图片失败",
+    default_name_traveler: "旅客",
+    // ItineraryDetail
+    save_changes_error: "保存变更失败。",
+    activity_type_placeholder: "例如：观光",
+    anonymous_user: "匿名",
+    you: "您",
+    user_alt: "用户"
   }
 };
 

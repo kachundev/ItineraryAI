@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase';
 interface AuthModalProps {
     isOpen: boolean;
     onClose: () => void;
+    t: any;
 }
 
-export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, t }: AuthModalProps) {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -39,7 +40,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     },
                 });
                 if (error) throw error;
-                setMessage('Registration successful! Please check your email to confirm your account.');
+                setMessage(t.registration_success || 'Registration successful! Please check your email to confirm your account.');
             }
         } catch (err: any) {
             setError(err.message);
@@ -54,7 +55,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 <div className="p-6">
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                            {isLogin ? 'Welcome Back' : 'Create Account'}
+                            {isLogin ? (t.welcome_back || 'Welcome Back') : (t.create_account || 'Create Account')}
                         </h2>
                         <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                             <span className="material-symbols-outlined">close</span>
@@ -75,18 +76,18 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Email</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">{t.email_label || 'Email'}</label>
                             <input
                                 type="email"
                                 required
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="w-full rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#16181d] px-4 py-3 text-slate-900 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-                                placeholder="name@example.com"
+                                placeholder={t.email_placeholder || 'name@example.com'}
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Password</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">{t.password_label || 'Password'}</label>
                             <input
                                 type="password"
                                 required
@@ -104,18 +105,18 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                             className="w-full py-3 px-4 bg-primary hover:bg-primary-hover text-white font-bold rounded-xl shadow-lg transition-transform active:scale-[0.99] disabled:opacity-70 flex justify-center items-center gap-2"
                         >
                             {loading && <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>}
-                            {isLogin ? 'Sign In' : 'Sign Up'}
+                            {isLogin ? (t.sign_in || 'Sign In') : (t.sign_up || 'Sign Up')}
                         </button>
                     </form>
 
                     <div className="mt-6 text-center">
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {isLogin ? "Don't have an account?" : "Already have an account?"}
+                            {isLogin ? (t.no_account || "Don't have an account?") : (t.has_account || "Already have an account?")}
                             <button
                                 onClick={() => { setIsLogin(!isLogin); setError(null); setMessage(null); }}
                                 className="ml-1 text-primary font-bold hover:underline"
                             >
-                                {isLogin ? 'Sign Up' : 'Sign In'}
+                                {isLogin ? (t.sign_up || 'Sign Up') : (t.sign_in || 'Sign In')}
                             </button>
                         </p>
                     </div>

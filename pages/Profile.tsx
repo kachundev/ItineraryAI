@@ -87,7 +87,7 @@ export default function Profile({ onNavigate, t }: ProfileProps) {
 
          const userProfile: User = {
             id: user.id,
-            name: profileData?.full_name || user.email?.split('@')[0] || 'Traveler',
+            name: profileData?.full_name || user.email?.split('@')[0] || t.default_name_traveler || 'Traveler',
             email: user.email || '',
             username: profileData?.username || '',
             bio: profileData?.bio || '',
@@ -180,7 +180,7 @@ export default function Profile({ onNavigate, t }: ProfileProps) {
          fetchProfileData(); // Refresh data
       } catch (error) {
          console.error('Error updating profile:', error);
-         alert('Failed to update profile');
+         alert(t.update_profile_error || 'Failed to update profile');
       } finally {
          setSaving(false);
       }
@@ -233,7 +233,7 @@ export default function Profile({ onNavigate, t }: ProfileProps) {
                               <h1 className="text-2xl font-black text-slate-900 dark:text-white mb-1">{profile.name}</h1>
                               <p className="text-slate-500 dark:text-gray-400 text-sm font-medium mb-4">{profile.username ? `@${profile.username}` : ''}</p>
                               <p className="text-slate-700 dark:text-gray-300 text-sm leading-relaxed mb-6 whitespace-pre-wrap">
-                                 {profile.bio || "No bio yet."}
+                                 {profile.bio || t.no_bio || "No bio yet."}
                               </p>
                               <button
                                  onClick={() => setIsEditing(true)}
@@ -293,7 +293,7 @@ export default function Profile({ onNavigate, t }: ProfileProps) {
                                           const url = await uploadImage(e.target.files[0], editForm.avatar_url);
                                           setEditForm({ ...editForm, avatar_url: url });
                                        } catch (error) {
-                                          alert('Error uploading image');
+                                          alert(t.upload_image_error || 'Error uploading image');
                                        } finally {
                                           setSaving(false);
                                        }

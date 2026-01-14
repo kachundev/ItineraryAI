@@ -445,11 +445,13 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
     <div className="min-h-screen bg-background-light dark:bg-background-dark pb-20">
       {/* Header Image */}
       <div className="relative h-[40vh] w-full bg-slate-900">
-        <img
-          src={itinerary.coverImage}
-          alt={itinerary.title}
-          className="w-full h-full object-cover opacity-60"
-        />
+        {itinerary.coverImage && (
+          <img
+            src={itinerary.coverImage}
+            alt={itinerary.title}
+            className="w-full h-full object-cover opacity-60"
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-background-light dark:from-background-dark to-transparent"></div>
         <div className="absolute bottom-0 left-0 w-full p-6 lg:p-12 max-w-7xl mx-auto">
           <div className="flex flex-col gap-4">

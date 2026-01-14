@@ -189,7 +189,11 @@ export const translations = {
     ago: "ago",
     image_too_large: "Image must be less than 5MB",
     trips_word: "trips",
-    all: "All"
+    all: "All",
+    add_day: "Add Day",
+    nav_profile: "Profile",
+    comment_error: "Failed to post comment",
+    removed_from_saved: "Removed from saved trips"
   },
   "zh-TW": {
     nav_home: "首頁",
@@ -380,7 +384,11 @@ export const translations = {
     ago: "前",
     image_too_large: "圖片必須小於 5MB",
     trips_word: "個行程",
-    all: "全部"
+    all: "全部",
+    add_day: "新增一天",
+    nav_profile: "個人資料",
+    comment_error: "發佈留言失敗",
+    removed_from_saved: "已從收藏中移除"
   },
   "zh-CN": {
     nav_home: "首页",
@@ -571,7 +579,11 @@ export const translations = {
     ago: "前",
     image_too_large: "图片必须小于 5MB",
     trips_word: "个行程",
-    all: "全部"
+    all: "全部",
+    add_day: "添加一天",
+    nav_profile: "个人资料",
+    comment_error: "发布评论失败",
+    removed_from_saved: "已从收藏中移除"
   }
 };
 

@@ -224,8 +224,7 @@ export const translations = {
     user_alt: "User",
     // Export
     export: "Export",
-    export_json: "JSON (Data)",
-    export_markdown: "Markdown",
+    export_pdf: "PDF",
     export_text: "Plain Text",
     export_success: "Export successful!"
   },
@@ -453,8 +452,7 @@ export const translations = {
     user_alt: "使用者",
     // Export
     export: "匯出",
-    export_json: "JSON（資料）",
-    export_markdown: "Markdown",
+    export_pdf: "PDF",
     export_text: "純文字",
     export_success: "匯出成功！"
   },
@@ -682,8 +680,7 @@ export const translations = {
     user_alt: "用户",
     // Export
     export: "导出",
-    export_json: "JSON（数据）",
-    export_markdown: "Markdown",
+    export_pdf: "PDF",
     export_text: "纯文本",
     export_success: "导出成功！"
   }

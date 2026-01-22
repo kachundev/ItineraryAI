@@ -797,11 +797,11 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                   {showExportMenu && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-card-dark border border-gray-200 dark:border-[#2a2e35] rounded-xl shadow-lg overflow-hidden z-30">
                       <button
-                        onClick={() => { exportItinerary(displayItinerary, 'markdown'); setShowExportMenu(false); }}
+                        onClick={() => { exportItinerary(displayItinerary, 'pdf'); setShowExportMenu(false); }}
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-left text-sm text-slate-700 dark:text-gray-300"
                       >
-                        <span className="material-symbols-outlined text-[18px] text-blue-500">description</span>
-                        {t.export_markdown}
+                        <span className="material-symbols-outlined text-[18px] text-red-500">picture_as_pdf</span>
+                        {t.export_pdf}
                       </button>
                       <button
                         onClick={() => { exportItinerary(displayItinerary, 'txt'); setShowExportMenu(false); }}
@@ -809,13 +809,6 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                       >
                         <span className="material-symbols-outlined text-[18px] text-gray-500">article</span>
                         {t.export_text}
-                      </button>
-                      <button
-                        onClick={() => { exportItinerary(displayItinerary, 'json'); setShowExportMenu(false); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-left text-sm text-slate-700 dark:text-gray-300 border-t border-gray-100 dark:border-[#2a2e35]"
-                      >
-                        <span className="material-symbols-outlined text-[18px] text-green-500">code</span>
-                        {t.export_json}
                       </button>
                     </div>
                   )}

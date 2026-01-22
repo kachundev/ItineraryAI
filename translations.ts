@@ -221,7 +221,13 @@ export const translations = {
     activity_type_placeholder: "e.g. sightseeing",
     anonymous_user: "Anonymous",
     you: "You",
-    user_alt: "User"
+    user_alt: "User",
+    // Export
+    export: "Export",
+    export_json: "JSON (Data)",
+    export_markdown: "Markdown",
+    export_text: "Plain Text",
+    export_success: "Export successful!"
   },
   "zh-TW": {
     nav_home: "首頁",
@@ -444,7 +450,13 @@ export const translations = {
     activity_type_placeholder: "例如：觀光",
     anonymous_user: "匿名",
     you: "您",
-    user_alt: "使用者"
+    user_alt: "使用者",
+    // Export
+    export: "匯出",
+    export_json: "JSON（資料）",
+    export_markdown: "Markdown",
+    export_text: "純文字",
+    export_success: "匯出成功！"
   },
   "zh-CN": {
     nav_home: "首页",
@@ -667,7 +679,13 @@ export const translations = {
     activity_type_placeholder: "例如：观光",
     anonymous_user: "匿名",
     you: "您",
-    user_alt: "用户"
+    user_alt: "用户",
+    // Export
+    export: "导出",
+    export_json: "JSON（数据）",
+    export_markdown: "Markdown",
+    export_text: "纯文本",
+    export_success: "导出成功！"
   }
 };
 

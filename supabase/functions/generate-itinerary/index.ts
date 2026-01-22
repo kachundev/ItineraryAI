@@ -23,7 +23,8 @@ Deno.serve(async (req) => {
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.0-flash',
       generationConfig: {
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        maxOutputTokens: 65536
       }
     })
 
@@ -133,7 +134,53 @@ Remember: tips and transport MUST be comprehensive with at least 50 words each. 
     const result = await model.generateContent(prompt)
     const response = result.response
     const text = response.text()
-    const data = JSON.parse(text)
+
+    // Try to parse, if fails attempt to repair truncated JSON
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch (parseError) {
+      console.log('Initial parse failed, attempting to repair JSON...')
+      // Try to repair truncated JSON by closing open brackets/braces
+      let repairedText = text.trim()
+
+      // Count unclosed brackets
+      let openBraces = 0
+      let openBrackets = 0
+      let inString = false
+      let lastChar = ''
+
+      for (const char of repairedText) {
+        if (char === '"' && lastChar !== '\\') inString = !inString
+        if (!inString) {
+          if (char === '{') openBraces++
+          if (char === '}') openBraces--
+          if (char === '[') openBrackets++
+          if (char === ']') openBrackets--
+        }
+        lastChar = char
+      }
+
+      // If we're in a string, close it
+      if (inString) repairedText += '"'
+
+      // Close any open brackets/braces
+      while (openBrackets > 0) {
+        repairedText += ']'
+        openBrackets--
+      }
+      while (openBraces > 0) {
+        repairedText += '}'
+        openBraces--
+      }
+
+      try {
+        data = JSON.parse(repairedText)
+        console.log('JSON repair successful')
+      } catch (repairError) {
+        throw new Error(`Failed to parse AI response: ${parseError.message}`)
+      }
+    }
 
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -146,3 +193,4 @@ Remember: tips and transport MUST be comprehensive with at least 50 words each. 
     })
   }
 })
+

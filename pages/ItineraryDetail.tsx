@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Itinerary, Activity, RestaurantOption, DayPlan } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { exportItinerary, ExportFormat } from '../services/exportService';
 
 interface ItineraryDetailProps {
   itinerary: Itinerary | null;
@@ -73,6 +74,9 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
   const [isLiked, setIsLiked] = useState(false);
   const [isSavedToTrips, setIsSavedToTrips] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+
+  // Export dropdown state
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Activity form state
   const [activityForm, setActivityForm] = useState<Activity>({
@@ -779,6 +783,42 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                     <span className={`material-symbols-outlined text-[20px] ${isSavedToTrips ? 'fill-1' : ''}`}>bookmark</span>
                     {isSavedToTrips ? t.saved : t.save}
                   </button>
+                </div>
+
+                {/* Export Dropdown */}
+                <div className="relative mt-4">
+                  <button
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300 font-bold text-sm transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">download</span>
+                    {t.export}
+                  </button>
+                  {showExportMenu && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-card-dark border border-gray-200 dark:border-[#2a2e35] rounded-xl shadow-lg overflow-hidden z-30">
+                      <button
+                        onClick={() => { exportItinerary(displayItinerary, 'markdown'); setShowExportMenu(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-left text-sm text-slate-700 dark:text-gray-300"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-blue-500">description</span>
+                        {t.export_markdown}
+                      </button>
+                      <button
+                        onClick={() => { exportItinerary(displayItinerary, 'txt'); setShowExportMenu(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-left text-sm text-slate-700 dark:text-gray-300 border-t border-gray-100 dark:border-[#2a2e35]"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-gray-500">article</span>
+                        {t.export_text}
+                      </button>
+                      <button
+                        onClick={() => { exportItinerary(displayItinerary, 'json'); setShowExportMenu(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-left text-sm text-slate-700 dark:text-gray-300 border-t border-gray-100 dark:border-[#2a2e35]"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-green-500">code</span>
+                        {t.export_json}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

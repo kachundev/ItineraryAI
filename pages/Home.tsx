@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { generateItinerary } from '../services/itineraryService';
+import { GENERATE_LOADING_STAGES_MS, visibleGenerateMessage } from '../services/generateErrors';
 import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
 import CustomDatePicker from '../components/CustomDatePicker';
@@ -28,6 +29,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
   const [specialRequests, setSpecialRequests] = useState('');
   const [selectedPreferences, setSelectedPreferences] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState(0);
   const [error, setError] = useState('');
 
   const [trendingItineraries, setTrendingItineraries] = useState<any[]>([]);
@@ -37,6 +39,20 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
     );
   };
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStage(0);
+      return;
+    }
+
+    const timers = GENERATE_LOADING_STAGES_MS.map((delay, index) =>
+      window.setTimeout(() => setLoadingStage(index + 1), delay)
+    );
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [loading]);
 
   // Fetch trending itineraries
   useEffect(() => {
@@ -62,6 +78,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
     }
 
     setLoading(true);
+    setLoadingStage(0);
     setError('');
 
     try {
@@ -69,13 +86,17 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
       const formatDate = (d: Date) => d.toISOString().split('T')[0];
       const itinerary = await generateItinerary(destination, formatDate(startDate), formatDate(endDate), selectedPreferences, specialRequests, lang);
       onNavigate('itinerary', itinerary);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err instanceof Error ? err.message : 'Failed to generate itinerary. Please try again later.');
+      // Keep destination, dates, preferences, and special requests so the user can retry.
+      setError(visibleGenerateMessage(err, (key) => t[key]));
     } finally {
       setLoading(false);
     }
   };
+
+  const loadingLabels = [t.planning_button, t.planning_stage_15, t.planning_stage_30, t.planning_stage_45];
+  const loadingLabel = loadingLabels[loadingStage] || t.planning_button;
 
   return (
     <div className="flex-1">
@@ -201,7 +222,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
                   {loading ? (
                     <>
                       <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                      <span>{t.planning_button}</span>
+                      <span aria-live="polite">{loadingLabel}</span>
                     </>
                   ) : (
                     <>
@@ -210,7 +231,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
                     </>
                   )}
                 </button>
-                {error && <p className="text-red-500 text-center mt-4 text-sm font-medium">{error}</p>}
+                {error && <p role="alert" className="text-red-500 text-center mt-4 text-sm font-medium">{error}</p>}
               </div>
             </form>
           </div>

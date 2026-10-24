@@ -1,11 +1,12 @@
-
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-import { GoogleGenerativeAI } from 'npm:@google/generative-ai'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+const XAI_CHAT_COMPLETIONS_URL = 'https://api.x.ai/v1/chat/completions'
+const DEFAULT_MODEL = 'grok-4.7'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -13,23 +14,199 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { destination, startDate, endDate, preferences, specialRequests, language } = await req.json()
+    const body = await req.json()
+    const destination = requireString(body.destination, 'destination', 200)
+    const startDate = requireString(body.startDate, 'startDate', 40)
+    const endDate = requireString(body.endDate, 'endDate', 40)
+    const specialRequests = optionalString(body.specialRequests, 2000)
+    const language = optionalString(body.language, 20) || 'en'
+    const preferences = normalizePreferences(body.preferences)
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    const apiKey = Deno.env.get('XAI_API_KEY')
     if (!apiKey) {
-      throw new Error('Missing GEMINI_API_KEY')
+      throw new HttpError('Missing XAI_API_KEY. Set it as a Supabase Edge Function secret.', 500)
     }
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.6-flash',
-      generationConfig: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 8192
-      }
-    })
 
-    const prompt = `You are a professional local travel guide creating an ultra-detailed itinerary for ${destination} from ${startDate} to ${endDate}.
-Preferences: ${preferences?.join(', ') || 'General sightseeing'}
+    const model = Deno.env.get('XAI_MODEL') || DEFAULT_MODEL
+    const prompt = buildPrompt(destination, startDate, endDate, preferences, specialRequests, language)
+    const text = await callGrok(prompt, apiKey, model)
+    const data = parseModelJson(text)
+
+    return json(data, 200)
+  } catch (error) {
+    const status = error instanceof HttpError ? error.status : 400
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('generate-itinerary failed:', message)
+    return json({ error: message }, status)
+  }
+})
+
+class HttpError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+function json(payload: unknown, status: number) {
+  return new Response(JSON.stringify(payload), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
+  })
+}
+
+function requireString(value: unknown, field: string, maxLength: number): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new HttpError(`Missing ${field}`, 400)
+  }
+  const trimmed = value.trim()
+  if (trimmed.length > maxLength) {
+    throw new HttpError(`${field} is too long`, 400)
+  }
+  return trimmed
+}
+
+function optionalString(value: unknown, maxLength: number): string {
+  if (typeof value !== 'string') return ''
+  return value.trim().slice(0, maxLength)
+}
+
+function normalizePreferences(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && item.length <= 80)
+    .slice(0, 12)
+}
+
+async function callGrok(prompt: string, apiKey: string, model: string): Promise<string> {
+  const response = await fetch(XAI_CHAT_COMPLETIONS_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional local travel guide. Reply with one JSON object only. Do not wrap it in markdown.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      response_format: { type: 'json_object' },
+    }),
+  })
+
+  const raw = await response.text()
+  if (!response.ok) {
+    throw new HttpError(`xAI request failed (${response.status}): ${summarizeUpstreamError(raw)}`, 502)
+  }
+
+  let payload: { choices?: Array<{ message?: { content?: unknown } }> }
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    throw new HttpError('xAI returned a non-JSON response', 502)
+  }
+
+  const content = readMessageContent(payload.choices?.[0]?.message?.content)
+  if (!content) {
+    throw new HttpError('xAI response did not include message content', 502)
+  }
+  return content
+}
+
+function summarizeUpstreamError(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    const message = parsed?.error?.message || parsed?.error || parsed?.message
+    if (typeof message === 'string' && message.trim()) return message.slice(0, 500)
+  } catch {
+    // Fall through to the raw slice.
+  }
+  return raw.slice(0, 500)
+}
+
+function readMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content.map((part) => {
+    if (typeof part === 'string') return part
+    if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') {
+      return part.text
+    }
+    return ''
+  }).join('')
+}
+
+function parseModelJson(text: string): unknown {
+  const extracted = extractJsonText(text)
+  try {
+    return JSON.parse(extracted)
+  } catch (parseError) {
+    console.log('Initial parse failed, attempting to repair JSON...')
+    const repairedText = repairTruncatedJson(extracted)
+    try {
+      const data = JSON.parse(repairedText)
+      console.log('JSON repair successful')
+      return data
+    } catch {
+      const message = parseError instanceof Error ? parseError.message : String(parseError)
+      throw new HttpError(`Failed to parse AI response: ${message}`, 502)
+    }
+  }
+}
+
+function extractJsonText(text: string): string {
+  const trimmed = text.trim()
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  return fenced ? fenced[1].trim() : trimmed
+}
+
+function repairTruncatedJson(text: string): string {
+  let repairedText = text.trim()
+  let openBraces = 0
+  let openBrackets = 0
+  let inString = false
+  let lastChar = ''
+
+  for (const char of repairedText) {
+    if (char === '"' && lastChar !== '\\') inString = !inString
+    if (!inString) {
+      if (char === '{') openBraces++
+      if (char === '}') openBraces--
+      if (char === '[') openBrackets++
+      if (char === ']') openBrackets--
+    }
+    lastChar = char
+  }
+
+  if (inString) repairedText += '"'
+  while (openBrackets > 0) {
+    repairedText += ']'
+    openBrackets--
+  }
+  while (openBraces > 0) {
+    repairedText += '}'
+    openBraces--
+  }
+  return repairedText
+}
+
+function buildPrompt(
+  destination: string,
+  startDate: string,
+  endDate: string,
+  preferences: string[],
+  specialRequests: string,
+  language: string,
+) {
+  return `You are a professional local travel guide creating an ultra-detailed itinerary for ${destination} from ${startDate} to ${endDate}.
+Preferences: ${preferences.length > 0 ? preferences.join(', ') : 'General sightseeing'}
 Special requests: ${specialRequests || 'None'}
 Language: ${language || 'en'}
 
@@ -129,68 +306,5 @@ Return this JSON structure:
   ]
 }
 
-Remember: tips and transport MUST be comprehensive with at least 50 words each. Include all days from ${startDate} to ${endDate}.`
-
-    const result = await model.generateContent(prompt)
-    const response = result.response
-    const text = response.text()
-
-    // Try to parse, if fails attempt to repair truncated JSON
-    let data
-    try {
-      data = JSON.parse(text)
-    } catch (parseError) {
-      console.log('Initial parse failed, attempting to repair JSON...')
-      // Try to repair truncated JSON by closing open brackets/braces
-      let repairedText = text.trim()
-
-      // Count unclosed brackets
-      let openBraces = 0
-      let openBrackets = 0
-      let inString = false
-      let lastChar = ''
-
-      for (const char of repairedText) {
-        if (char === '"' && lastChar !== '\\') inString = !inString
-        if (!inString) {
-          if (char === '{') openBraces++
-          if (char === '}') openBraces--
-          if (char === '[') openBrackets++
-          if (char === ']') openBrackets--
-        }
-        lastChar = char
-      }
-
-      // If we're in a string, close it
-      if (inString) repairedText += '"'
-
-      // Close any open brackets/braces
-      while (openBrackets > 0) {
-        repairedText += ']'
-        openBrackets--
-      }
-      while (openBraces > 0) {
-        repairedText += '}'
-        openBraces--
-      }
-
-      try {
-        data = JSON.parse(repairedText)
-        console.log('JSON repair successful')
-      } catch (repairError) {
-        throw new Error(`Failed to parse AI response: ${parseError.message}`)
-      }
-    }
-
-    return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
-  }
-})
-
+Remember: tips and transport MUST be comprehensive with at least 50 words each. Include all days from ${startDate} to ${endDate}. Shape the days around the listed preferences when they are more specific than general sightseeing.`
+}

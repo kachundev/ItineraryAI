@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateItinerary } from '../services/geminiService';
+import { generateItinerary } from '../services/itineraryService';
 import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
 import CustomDatePicker from '../components/CustomDatePicker';
@@ -10,15 +10,33 @@ interface HomeProps {
   t: any;
 }
 
+const PREFERENCE_OPTIONS = [
+  { id: 'Food & dining', labelKey: 'pref_food' },
+  { id: 'Culture & history', labelKey: 'pref_culture' },
+  { id: 'Nature & outdoors', labelKey: 'pref_nature' },
+  { id: 'Nightlife', labelKey: 'pref_nightlife' },
+  { id: 'Shopping', labelKey: 'pref_shopping' },
+  { id: 'Family-friendly', labelKey: 'pref_family' },
+  { id: 'Art & museums', labelKey: 'pref_art' },
+  { id: 'Relaxation', labelKey: 'pref_relax' },
+] as const;
+
 export default function Home({ onNavigate, lang, t }: HomeProps) {
   const [destination, setDestination] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [specialRequests, setSpecialRequests] = useState('');
+  const [selectedPreferences, setSelectedPreferences] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const [trendingItineraries, setTrendingItineraries] = useState<any[]>([]);
+
+  const togglePreference = (id: string) => {
+    setSelectedPreferences((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  };
 
   // Fetch trending itineraries
   useEffect(() => {
@@ -49,7 +67,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
     try {
       // Format dates as strings for the API
       const formatDate = (d: Date) => d.toISOString().split('T')[0];
-      const itinerary = await generateItinerary(destination, formatDate(startDate), formatDate(endDate), [], specialRequests, lang);
+      const itinerary = await generateItinerary(destination, formatDate(startDate), formatDate(endDate), selectedPreferences, specialRequests, lang);
       onNavigate('itinerary', itinerary);
     } catch (err: any) {
       console.error(err);
@@ -62,7 +80,7 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
   return (
     <div className="flex-1">
       <section className="relative">
-        <div className="absolute inset-0 h-[750px] w-full overflow-hidden">
+        <div className="absolute inset-0 w-full overflow-hidden">
           <div
             className="h-full w-full bg-cover bg-center transition-transform duration-[20s] hover:scale-105"
             style={{
@@ -129,6 +147,31 @@ export default function Home({ onNavigate, lang, t }: HomeProps) {
                     placeholder={t.end_date}
                     icon="event"
                   />
+                </div>
+              </div>
+
+              {/* Preferences */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-bold text-slate-700 dark:text-gray-300 uppercase tracking-wide">{t.preferences_label}</label>
+                <p className="text-sm text-slate-500 dark:text-gray-400">{t.preferences_hint}</p>
+                <div className="flex flex-wrap gap-2">
+                  {PREFERENCE_OPTIONS.map((option) => {
+                    const selected = selectedPreferences.includes(option.id);
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => togglePreference(option.id)}
+                        className={`rounded-full border px-4 py-2 text-sm font-bold transition-colors ${selected
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#16181d] text-slate-700 dark:text-gray-300 hover:border-primary'
+                          }`}
+                      >
+                        {t[option.labelKey]}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

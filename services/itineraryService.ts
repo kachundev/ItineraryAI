@@ -1,5 +1,13 @@
 import { supabase } from "../lib/supabase";
 import { Itinerary } from "../types";
+import {
+  GENERATE_MESSAGES,
+  GenerateItineraryError,
+  failureFromPayload,
+  readInvokeFailure,
+  resolveGenerateFailure,
+  startClientAbort,
+} from "./generateErrors";
 
 const generateWithEdgeFunction = async (
   destination: string,
@@ -9,48 +17,41 @@ const generateWithEdgeFunction = async (
   specialRequests: string,
   language: string
 ) => {
-  const { data, error } = await supabase.functions.invoke('generate-itinerary', {
-    body: {
-      destination,
-      startDate,
-      endDate,
-      preferences,
-      specialRequests,
-      language
-    }
-  });
-
-  if (error) {
-    console.error("Edge Function error:", error);
-    const parsedMessage = await readInvokeError(error);
-    throw new Error(parsedMessage || `Failed to generate itinerary: ${error.message}`);
-  }
-
-  return Array.isArray(data) ? data[0] : data;
-};
-
-async function readInvokeError(error: { context?: { body?: unknown } }): Promise<string | null> {
-  const body = error.context?.body;
-  if (!(body instanceof ReadableStream)) return null;
-
+  // functions.invoke in @supabase/functions-js@2.90.0 accepts `signal` and `timeout`.
+  // Pass the AbortSignal so this client, not the library timeout option, owns the 45s deadline.
+  const abort = startClientAbort();
   try {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      result += decoder.decode(value, { stream: true });
+    const { data, error } = await supabase.functions.invoke('generate-itinerary', {
+      body: {
+        destination,
+        startDate,
+        endDate,
+        preferences,
+        specialRequests,
+        language
+      },
+      signal: abort.signal,
+    });
+
+    if (abort.signal.aborted || error) {
+      const aborted = abort.signal.aborted;
+      console.error("Edge Function error:", error);
+      const failure = error
+        ? await readInvokeFailure(error)
+        : { code: null, detail: null, status: null };
+      const resolved = resolveGenerateFailure({
+        aborted,
+        code: failure.code,
+        detail: failure.detail,
+      });
+      throw new GenerateItineraryError(resolved.code, resolved.message);
     }
-    const parsed = JSON.parse(result);
-    if (parsed?.error) {
-      return String(parsed.error) + (parsed.details ? `: ${parsed.details}` : '');
-    }
-  } catch (e) {
-    console.error("Could not parse response body:", e);
+
+    return Array.isArray(data) ? data[0] : data;
+  } finally {
+    abort.finish();
   }
-  return null;
-}
+};
 
 export const generateItinerary = async (
   destination: string,
@@ -69,9 +70,19 @@ export const generateItinerary = async (
     language
   );
 
-  if (responseData?.error) {
-    console.error("API error:", responseData.error);
-    throw new Error(responseData.error);
+  const payloadError = failureFromPayload(responseData);
+  if (payloadError) {
+    console.error("API error:", payloadError.detail);
+    const resolved = resolveGenerateFailure({
+      aborted: false,
+      code: payloadError.code,
+      detail: payloadError.detail,
+    });
+    throw new GenerateItineraryError(resolved.code, resolved.message);
+  }
+
+  if (!responseData || typeof responseData !== 'object') {
+    throw new GenerateItineraryError('parse_error', GENERATE_MESSAGES.parse_error);
   }
 
   const itinerary: Itinerary = {

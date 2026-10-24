@@ -165,16 +165,34 @@ export default function Profile({ onNavigate, t }: ProfileProps) {
          if (!user) return;
          setSaving(true);
 
+         const username = editForm.username.trim();
+         if (username && !/^[A-Za-z0-9_]{3,30}$/.test(username)) {
+            alert(t.username_invalid || 'Username must be 3–30 characters: letters, numbers, and underscores.');
+            return;
+         }
+
          const updates = {
             id: user.id,
             full_name: editForm.full_name,
+            username: username || null,
             bio: editForm.bio,
             avatar_url: editForm.avatar_url,
+            banner_url: editForm.banner_url || null,
          };
 
          const { error } = await supabase.from('profiles').upsert(updates);
 
-         if (error) throw error;
+         if (error) {
+            if (error.code === '23505') {
+               alert(t.username_taken || 'That username is already taken.');
+               return;
+            }
+            if (error.code === '23514') {
+               alert(t.username_invalid || 'Username must be 3–30 characters: letters, numbers, and underscores.');
+               return;
+            }
+            throw error;
+         }
 
          setIsEditing(false);
          fetchProfileData(); // Refresh data
@@ -256,6 +274,19 @@ export default function Profile({ onNavigate, t }: ProfileProps) {
                               />
                            </div>
                            <div>
+                              <label className="block text-left text-xs font-bold text-slate-500 mb-1">{t.username}</label>
+                              <input
+                                 type="text"
+                                 className="w-full bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm"
+                                 value={editForm.username}
+                                 maxLength={30}
+                                 autoCapitalize="none"
+                                 spellCheck={false}
+                                 placeholder={t.username_placeholder || 'traveler_jane'}
+                                 onChange={e => setEditForm({ ...editForm, username: e.target.value })}
+                              />
+                           </div>
+                           <div>
                               <label className="block text-left text-xs font-bold text-slate-500 mb-1">{t.bio}</label>
                               <textarea
                                  className="w-full bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm"
@@ -300,6 +331,35 @@ export default function Profile({ onNavigate, t }: ProfileProps) {
                                     }}
                                  />
                               </div>
+                           </div>
+                           <div>
+                              <label className="block text-left text-xs font-bold text-slate-500 mb-1">{t.banner_url}</label>
+                              {editForm.banner_url ? (
+                                 <img src={editForm.banner_url} alt="" className="mb-2 h-16 w-full rounded-lg object-cover" />
+                              ) : null}
+                              <input
+                                 type="file"
+                                 accept="image/*"
+                                 className="block w-full text-xs text-slate-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-full file:border-0
+                                    file:text-xs file:font-bold
+                                    file:bg-primary/10 file:text-primary
+                                    hover:file:bg-primary/20
+                                 "
+                                 onChange={async (e) => {
+                                    if (!e.target.files || e.target.files.length === 0) return;
+                                    try {
+                                       setSaving(true);
+                                       const url = await uploadImage(e.target.files[0], editForm.banner_url);
+                                       setEditForm({ ...editForm, banner_url: url });
+                                    } catch (error) {
+                                       alert(t.upload_image_error || 'Error uploading image');
+                                    } finally {
+                                       setSaving(false);
+                                    }
+                                 }}
+                              />
                            </div>
                            <div className="flex gap-2 pt-2">
                               <button

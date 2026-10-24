@@ -4,9 +4,17 @@ create table public.profiles (
   email text,
   full_name text,
   avatar_url text,
+  username text check (username is null or username ~ '^[A-Za-z0-9_]{3,30}$'),
+  bio text,
+  banner_url text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   primary key (id)
 );
+
+-- Case-insensitive uniqueness for non-null handles. Multiple null usernames are allowed.
+create unique index profiles_username_lower_unique
+  on public.profiles (lower(username))
+  where username is not null;
 
 -- Enable Row Level Security (RLS) for privacy
 alter table public.profiles enable row level security;

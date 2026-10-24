@@ -1,6 +1,12 @@
 import { supabase } from "../lib/supabase";
 import { Itinerary } from "../types";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  CLIENT_WAIT_MS,
+  isAbortLike,
+  ItineraryErrorPayload,
+  messageFromItineraryPayload,
+} from "./itineraryErrors";
 
 // Direct browser API calls are blocked by location - must use Edge Function
 const USE_LOCAL_AI = false;
@@ -140,6 +146,24 @@ const generateWithLocalAI = async (
   return JSON.parse(text);
 };
 
+async function readInvokePayload(error: unknown): Promise<ItineraryErrorPayload | null> {
+  if (!error || typeof error !== 'object' || !('context' in error)) return null;
+  const context = (error as { context?: unknown }).context;
+  if (!context) return null;
+  try {
+    if (typeof Response !== 'undefined' && context instanceof Response) {
+      return await context.json() as ItineraryErrorPayload;
+    }
+    const body = (context as { body?: unknown }).body;
+    if (body instanceof ReadableStream) {
+      return JSON.parse(await new Response(body).text()) as ItineraryErrorPayload;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 // Production: Supabase Edge Function
 const generateWithEdgeFunction = async (
   destination: string,
@@ -157,31 +181,21 @@ const generateWithEdgeFunction = async (
       preferences,
       specialRequests,
       language
-    }
+    },
+    timeout: CLIENT_WAIT_MS,
   });
 
   if (error) {
-    console.error("Edge Function error:", error);
-    if (error.context?.body && error.context.body instanceof ReadableStream) {
-      try {
-        const reader = error.context.body.getReader();
-        const decoder = new TextDecoder();
-        let result = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          result += decoder.decode(value, { stream: true });
-        }
-        console.error("Response body content:", result);
-        const parsed = JSON.parse(result);
-        if (parsed.error) {
-          throw new Error(parsed.error + (parsed.details ? `: ${parsed.details}` : ''));
-        }
-      } catch (e) {
-        console.error("Could not parse response body:", e);
-      }
+    const payload = await readInvokePayload(error);
+    const message = messageFromItineraryPayload(payload);
+    console.error("Edge Function error", { code: payload?.code ?? (isAbortLike(error) ? 'timeout' : 'unknown') });
+    if (message) {
+      throw new Error(message);
     }
-    throw new Error(`Failed to generate itinerary: ${error.message}`);
+    if (isAbortLike(error)) {
+      throw new Error('Itinerary generation timed out. Please try again.');
+    }
+    throw new Error('Failed to generate itinerary. Please try again.');
   }
 
   console.log("Edge Function response:", data);
@@ -203,8 +217,8 @@ export const generateItinerary = async (
     : await generateWithEdgeFunction(destination, startDate, endDate, preferences, specialRequests, language);
 
   if (responseData?.error) {
-    console.error("API error:", responseData.error);
-    throw new Error(responseData.error);
+    console.error("API error", { code: responseData.code ?? 'unknown' });
+    throw new Error(messageFromItineraryPayload(responseData) || responseData.error);
   }
 
   const itinerary: Itinerary = {

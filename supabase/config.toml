@@ -1,0 +1,6 @@
+# Function deploy settings only. verify_jwt must stay true so generate-itinerary
+# is not publicly callable. Do not deploy this function with --no-verify-jwt.
+project_id = "yrihdmignfnyxzmlsmqp"
+
+[functions.generate-itinerary]
+verify_jwt = true

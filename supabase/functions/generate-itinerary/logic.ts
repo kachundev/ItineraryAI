@@ -10,25 +10,32 @@
  * function, as the gateway in front of xAI, gave up waiting. 408 would
  * mean the client was slow to send the body.
  *
- * max_tokens is 6000. That is a ceiling for compact multi-day JSON, not a
- * target: a 3-day plan that stays inside the word caps is roughly 2k
- * tokens, and 6000 still fits about a week. xAI documents max_tokens as
- * deprecated in favor of max_completion_tokens, which caps visible output
- * and does not count reasoning tokens. Both fields are set to 6000 so
- * whichever name the server honors, the cap applies.
+ * P1-1 calls POST https://api.x.ai/v1/responses. grok-4.7 defaults
+ * reasoning to "high", and chat completions does not apply a low-effort
+ * setting (its schema still describes reasoning_effort as grok-4.3-only).
+ * The Responses field is reasoning.effort: "low" | "medium" | "high" |
+ * "xhigh". A sibling reasoning_effort field is ignored when reasoning is
+ * set, so this request sends reasoning.effort only.
  *
- * P1-0.5 (not in this change): if a shortened trip still returns `timeout`
- * or `parse_error` with finish_reason "length", generate one day per
- * request and stitch the days in the client. grok-4.7 defaults
- * reasoning_effort to "high", and the chat-completions schema documents
- * that field as grok-4.3-only, so this request does not send it. A
- * follow-up can move the call to /v1/responses with reasoning.effort "low"
- * if 3-day trips still spend the 45s budget on thinking.
+ * max_output_tokens is 6000. That is a ceiling for compact multi-day JSON,
+ * not a target: a 3-day plan that stays inside the word caps is roughly 2k
+ * tokens, and 6000 still fits about a week. On the Responses API the cap
+ * applies to visible output only; reasoning tokens do not count toward it.
+ * JSON mode is text.format { type: "json_object" }, the Responses name for
+ * the old response_format json_object setting. store is false because this
+ * call is single-turn and does not use previous_response_id.
+ *
+ * P1-0.5 fallback (not in this change): if a trip still returns `timeout`,
+ * or `parse_error` because the response is incomplete with
+ * incomplete_details.reason "max_output_tokens" (mapped to finish reason
+ * "length"), generate one day per request and stitch the days in the
+ * client. Do not chunk days in this function.
  */
 
-export const XAI_CHAT_COMPLETIONS_URL = 'https://api.x.ai/v1/chat/completions'
+export const XAI_RESPONSES_URL = 'https://api.x.ai/v1/responses'
 export const DEFAULT_MODEL = 'grok-4.7'
 export const MAX_TOKENS = 6000
+export const REASONING_EFFORT = 'low'
 export const UPSTREAM_TIMEOUT_MS = 45_000
 export const MAX_TRIP_DAYS = 21
 
@@ -201,46 +208,87 @@ export function buildUserPrompt(trip: TripRequest): string {
   ].join('\n')
 }
 
-export function buildChatRequest(model: string, userPrompt: string) {
+export function buildResponsesRequest(model: string, userPrompt: string) {
   return {
     model,
-    messages: [
+    input: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
-    max_tokens: MAX_TOKENS,
-    max_completion_tokens: MAX_TOKENS,
+    max_output_tokens: MAX_TOKENS,
     temperature: 0.4,
-    response_format: { type: 'json_object' },
+    reasoning: { effort: REASONING_EFFORT },
+    text: { format: { type: 'json_object' as const } },
+    store: false,
   }
 }
 
 export function readModelMessage(payload: unknown): ModelMessage | null {
   if (!payload || typeof payload !== 'object') return null
-  const choice = (payload as { choices?: unknown }).choices
-  if (!Array.isArray(choice) || !choice[0] || typeof choice[0] !== 'object') return null
-  const first = choice[0] as { finish_reason?: unknown; message?: unknown }
-  const message = first.message
-  if (!message || typeof message !== 'object') return null
-  const record = message as { content?: unknown; refusal?: unknown }
-  const text = readContent(record.content).trim()
-  const finishReason = typeof first.finish_reason === 'string' ? first.finish_reason : null
-  const refusal = typeof record.refusal === 'string' && record.refusal.trim().length > 0
+  const record = payload as { output?: unknown; status?: unknown; incomplete_details?: unknown }
+  if (!Array.isArray(record.output)) return null
+
+  const texts: string[] = []
+  let refusal = false
+  let messageStatus: string | null = null
+  for (const item of record.output) {
+    if (!item || typeof item !== 'object') continue
+    const entry = item as { type?: unknown; status?: unknown; content?: unknown }
+    if (entry.type !== 'message' || !Array.isArray(entry.content)) continue
+    if (typeof entry.status === 'string') messageStatus = entry.status
+    for (const part of entry.content) {
+      if (!part || typeof part !== 'object') continue
+      const content = part as { type?: unknown; text?: unknown; refusal?: unknown }
+      if (content.type === 'output_text' && typeof content.text === 'string') {
+        texts.push(content.text)
+      }
+      if (content.type === 'refusal') {
+        refusal = true
+      }
+    }
+  }
+
+  const text = texts.join('').trim()
   if (!text && !refusal) return null
-  return { text, finishReason, refusal }
+  return {
+    text,
+    finishReason: finishReasonFromResponse(record, messageStatus),
+    refusal,
+  }
 }
 
 export function readUsage(payload: unknown): { completionTokens?: number; reasoningTokens?: number } {
   if (!payload || typeof payload !== 'object') return {}
   const usage = (payload as { usage?: unknown }).usage
   if (!usage || typeof usage !== 'object') return {}
-  const record = usage as { completion_tokens?: unknown; completion_tokens_details?: unknown }
-  const completionTokens = numberOrUndefined(record.completion_tokens)
-  const details = record.completion_tokens_details
+  const record = usage as {
+    output_tokens?: unknown
+    output_tokens_details?: unknown
+    completion_tokens?: unknown
+    completion_tokens_details?: unknown
+  }
+  const completionTokens = numberOrUndefined(record.output_tokens) ?? numberOrUndefined(record.completion_tokens)
+  const details = record.output_tokens_details ?? record.completion_tokens_details
   const reasoningTokens = details && typeof details === 'object'
     ? numberOrUndefined((details as { reasoning_tokens?: unknown }).reasoning_tokens)
     : undefined
   return { completionTokens, reasoningTokens }
+}
+
+function finishReasonFromResponse(
+  payload: { status?: unknown; incomplete_details?: unknown },
+  messageStatus: string | null,
+): string | null {
+  const details = payload.incomplete_details
+  const reason = details && typeof details === 'object'
+    ? (details as { reason?: unknown }).reason
+    : undefined
+  if (reason === 'max_output_tokens' || reason === 'max_time_limit') return 'length'
+  if (typeof reason === 'string' && reason.length > 0) return reason
+  const status = typeof payload.status === 'string' ? payload.status : messageStatus
+  if (status === 'incomplete') return 'length'
+  if (status === 'completed') return 'stop'
+  return status
 }
 
 export function upstreamErrorCode(raw: string): string | undefined {
@@ -313,18 +361,6 @@ function normalizePreferences(value: unknown): string[] {
     .map((item) => cleanLine(item, 80))
     .filter((item) => item.length > 0)
     .slice(0, 12)
-}
-
-function readContent(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content.map((part) => {
-    if (typeof part === 'string') return part
-    if (part && typeof part === 'object' && 'text' in part && typeof (part as { text?: unknown }).text === 'string') {
-      return (part as { text: string }).text
-    }
-    return ''
-  }).join('')
 }
 
 function extractJsonText(text: string): string {

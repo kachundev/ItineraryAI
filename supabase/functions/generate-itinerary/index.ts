@@ -5,8 +5,8 @@ import {
   SYSTEM_PROMPT,
   TIMEOUT_FAILURE,
   UPSTREAM_TIMEOUT_MS,
-  XAI_CHAT_COMPLETIONS_URL,
-  buildChatRequest,
+  XAI_RESPONSES_URL,
+  buildResponsesRequest,
   buildUserPrompt,
   errorBody,
   failure,
@@ -74,13 +74,13 @@ Deno.serve(async (req) => {
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
 
   try {
-    const response = await fetch(XAI_CHAT_COMPLETIONS_URL, {
+    const response = await fetch(XAI_RESPONSES_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildChatRequest(model, userPrompt)),
+      body: JSON.stringify(buildResponsesRequest(model, userPrompt)),
       signal: controller.signal,
     })
 

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test services/generateErrors.test.ts"
+    "test": "node --test services/generateErrors.test.ts supabase/functions/generate-itinerary/logic.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.0",

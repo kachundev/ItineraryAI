@@ -5,14 +5,16 @@ import {
   MAX_TOKENS,
   SYSTEM_PROMPT,
   TIMEOUT_FAILURE,
+  REASONING_EFFORT,
   UPSTREAM_TIMEOUT_MS,
-  XAI_CHAT_COMPLETIONS_URL,
-  buildChatRequest,
+  XAI_RESPONSES_URL,
+  buildResponsesRequest,
   buildUserPrompt,
   errorBody,
   isAbortError,
   parseItinerary,
   readModelMessage,
+  readUsage,
   resolveModel,
   upstreamErrorCode,
   upstreamFailure,
@@ -84,19 +86,29 @@ describe('prompt', () => {
 })
 
 describe('xAI request', () => {
-  it('caps tokens, keeps grok-4.7, and does not carry the API key', () => {
-    assert.equal(XAI_CHAT_COMPLETIONS_URL, 'https://api.x.ai/v1/chat/completions')
-    assert.equal(UPSTREAM_TIMEOUT_MS <= 45_000, true)
+  it('uses the responses API with low reasoning and a 6000 visible-output cap', () => {
+    assert.equal(XAI_RESPONSES_URL, 'https://api.x.ai/v1/responses')
+    assert.equal(UPSTREAM_TIMEOUT_MS, 45_000)
+    assert.equal(REASONING_EFFORT, 'low')
     assert.equal(resolveModel(undefined), DEFAULT_MODEL)
     assert.equal(resolveModel(' grok-4.7 '), 'grok-4.7')
     assert.equal(resolveModel(''), DEFAULT_MODEL)
 
-    const request = buildChatRequest('grok-4.7', 'Destination: Kyoto')
+    const request = buildResponsesRequest('grok-4.7', 'Destination: Kyoto')
     assert.equal(request.model, 'grok-4.7')
-    assert.equal(request.max_tokens, MAX_TOKENS)
-    assert.equal(request.max_completion_tokens, MAX_TOKENS)
-    assert.equal(request.max_tokens >= 4000 && request.max_tokens <= 6000, true)
+    assert.equal(request.max_output_tokens, MAX_TOKENS)
+    assert.equal(request.max_output_tokens >= 4000 && request.max_output_tokens <= 6000, true)
+    assert.deepEqual(request.reasoning, { effort: 'low' })
+    assert.deepEqual(request.text, { format: { type: 'json_object' } })
+    assert.equal(request.store, false)
+    assert.equal(request.input[0].content, SYSTEM_PROMPT)
+    assert.equal(request.input[1].content, 'Destination: Kyoto')
+    assert.equal('messages' in request, false)
+    assert.equal('max_tokens' in request, false)
+    assert.equal('response_format' in request, false)
+    assert.equal('reasoning_effort' in request, false)
     assert.equal(JSON.stringify(request).includes('Bearer'), false)
+    assert.equal(JSON.stringify(request).includes('/chat/completions'), false)
   })
 
   it('maps abort and upstream failures to stable codes', () => {
@@ -154,11 +166,77 @@ describe('parseItinerary', () => {
     }
   })
 
-  it('reads chat completion content', () => {
+  it('reads responses output text and ignores the reasoning item', () => {
     const message = readModelMessage({
-      choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(plan) } }],
+      status: 'completed',
+      incomplete_details: null,
+      output: [
+        {
+          type: 'reasoning',
+          status: 'completed',
+          summary: [{ type: 'summary_text', text: '{"title":"not the itinerary"}' }],
+        },
+        {
+          type: 'message',
+          role: 'assistant',
+          status: 'completed',
+          content: [{ type: 'output_text', text: JSON.stringify(plan) }],
+        },
+      ],
+      usage: {
+        output_tokens: 1800,
+        output_tokens_details: { reasoning_tokens: 220 },
+      },
     })
     assert.equal(message?.finishReason, 'stop')
-    assert.match(message?.text ?? '', /Kyoto/)
+    assert.equal(message?.refusal, false)
+    assert.match(message?.text ?? '', /Kyoto in three days/)
+    assert.doesNotMatch(message?.text ?? '', /not the itinerary/)
+
+    const usage = readUsage({
+      usage: {
+        output_tokens: 1800,
+        output_tokens_details: { reasoning_tokens: 220 },
+      },
+    })
+    assert.equal(usage.completionTokens, 1800)
+    assert.equal(usage.reasoningTokens, 220)
+    assert.deepEqual(readUsage({
+      usage: {
+        completion_tokens: 900,
+        completion_tokens_details: { reasoning_tokens: 40 },
+      },
+    }), { completionTokens: 900, reasoningTokens: 40 })
+  })
+
+  it('maps an output-token cutoff to finish reason length and a refusal to declined', () => {
+    const cutOff = readModelMessage({
+      status: 'incomplete',
+      incomplete_details: { reason: 'max_output_tokens' },
+      output: [{
+        type: 'message',
+        role: 'assistant',
+        status: 'incomplete',
+        content: [{ type: 'output_text', text: JSON.stringify(plan) }],
+      }],
+    })
+    assert.equal(cutOff?.finishReason, 'length')
+    const parsed = parseItinerary(cutOff?.text ?? '', {
+      finishReason: cutOff?.finishReason,
+      expectedDays: 3,
+    })
+    assert.equal(parsed.ok, false)
+    if (!parsed.ok) assert.match(parsed.failure.message, /shorter trip/)
+
+    const declined = readModelMessage({
+      status: 'completed',
+      output: [{
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'refusal', refusal: 'Cannot plan this trip.' }],
+      }],
+    })
+    assert.equal(declined?.refusal, true)
+    assert.equal(declined?.text, '')
   })
 })

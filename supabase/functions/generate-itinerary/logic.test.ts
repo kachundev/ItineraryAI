@@ -77,8 +77,15 @@ describe('prompt', () => {
     }
     assert.match(combined, /3 or 4/)
     assert.match(combined, /1 or 2/)
-    assert.match(combined, /25 words/)
-    assert.doesNotMatch(combined, /50 words|CRITICAL REQUIREMENTS|MINIMUM 4|5-6/)
+    assert.match(
+      SYSTEM_PROMPT,
+      /Word caps: trip description ≤70; activity description ≤55; tips ≤45; transport ≤40; restaurant description ≤35\./,
+    )
+    assert.match(
+      user,
+      /Cover every date from start through end\.\nFill soft fields within the word caps; prefer two restaurant options on each meal\.$/,
+    )
+    assert.doesNotMatch(combined, /25 words|30 words|at most 40 words|50 words|CRITICAL REQUIREMENTS|MINIMUM 4|5-6/)
     assert.equal(combined.includes('Kyoto'), true)
     assert.equal(SYSTEM_PROMPT.includes('Kyoto'), false)
     assert.ok(combined.length < 2500, `prompt is still long: ${combined.length} chars`)

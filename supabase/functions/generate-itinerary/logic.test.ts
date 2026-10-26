@@ -75,15 +75,16 @@ describe('prompt', () => {
     for (const field of ['"title"', '"description"', '"budget"', '"days"', 'restaurantOptions', '"tips"', '"transport"']) {
       assert.match(SYSTEM_PROMPT, new RegExp(field))
     }
-    assert.match(combined, /3 or 4/)
-    assert.match(combined, /1 or 2/)
+    assert.match(combined, /exactly 3 sightseeing activities/)
+    assert.match(combined, /exactly 1 restaurant/)
+    assert.doesNotMatch(combined, /3 or 4|1 or 2|prefer two restaurant/)
     assert.match(
       SYSTEM_PROMPT,
-      /Word caps: trip description ≤70; activity description ≤55; tips ≤45; transport ≤40; restaurant description ≤35\./,
+      /Word caps: trip description ≤60; activity description ≤55; tips ≤35; transport ≤35; restaurant description ≤35\./,
     )
     assert.match(
       user,
-      /Cover every date from start through end\.\nFill soft fields within the word caps; prefer two restaurant options on each meal\.$/,
+      /Cover every date from start through end\.\nFill soft fields within the word caps; one restaurant option on each meal\.$/,
     )
     assert.doesNotMatch(combined, /25 words|30 words|at most 40 words|50 words|CRITICAL REQUIREMENTS|MINIMUM 4|5-6/)
     assert.equal(combined.includes('Kyoto'), true)

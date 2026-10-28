@@ -80,16 +80,13 @@ describe('prompt', () => {
     assert.doesNotMatch(combined, /3 or 4|1 or 2|prefer two restaurant/)
     assert.match(
       SYSTEM_PROMPT,
-      /Aim for these word ranges \(do not write one-liners; stay within the max\): trip description 35–55; activity description 25–40; tips 15–25; transport 15–25; restaurant description 15–25\./,
+      /Word caps: trip description ≤60; activity description ≤40; tips ≤25; transport ≤25; restaurant description ≤25\./,
     )
-    assert.match(
-      SYSTEM_PROMPT,
-      /Hard caps: trip description ≤60; activity description ≤40; tips ≤25; transport ≤25; restaurant description ≤25\./,
-    )
-    assert.doesNotMatch(combined, /Keep each soft field to one short sentence|Fill soft fields in one short sentence each|Word caps:/)
+    assert.match(SYSTEM_PROMPT, /Keep each soft field to one short sentence\./)
+    assert.doesNotMatch(combined, /Aim for these word ranges|target word ranges|35–55|25–40|15–25|Hard caps:|do not write one-liners/)
     assert.match(
       user,
-      /Cover every date from start through end\.\nFill soft fields toward the target word ranges; one restaurant option per meal\.$/,
+      /Cover every date from start through end\.\nFill soft fields in one short sentence each; one restaurant option per meal\.$/,
     )
     assert.doesNotMatch(combined, /25 words|30 words|at most 40 words|50 words|CRITICAL REQUIREMENTS|MINIMUM 4|5-6/)
     assert.equal(combined.includes('Kyoto'), true)

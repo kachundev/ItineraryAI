@@ -2,12 +2,26 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Itinerary, Activity, RestaurantOption, DayPlan } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { exportItinerary, ExportFormat } from '../services/exportService';
+import { exportItinerary } from '../services/exportService';
+import { EmptyState } from '../components/EmptyState';
+import { useToast } from '../components/Toast';
+import {
+  addItineraryLike,
+  addItinerarySave,
+  createItineraryComment,
+  isPersistedItineraryId,
+  ItineraryComment,
+  loadItineraryComments,
+  removeItineraryLike,
+  removeItinerarySave,
+  setItineraryPublished,
+} from '../services/community';
 
 interface ItineraryDetailProps {
   itinerary: Itinerary | null;
   onNavigate: (view: any) => void;
   onSave: (itinerary: Itinerary) => void;
+  onRequireAuth: () => void;
   t: any;
 }
 
@@ -54,8 +68,9 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ option, index, t }) => 
   );
 };
 
-export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: ItineraryDetailProps) {
+export default function ItineraryDetail({ itinerary, onNavigate, onSave, onRequireAuth, t }: ItineraryDetailProps) {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [activeDay, setActiveDay] = useState(0);
   const dailyPlanRef = useRef<HTMLDivElement>(null);
   const [isSaved, setIsSaved] = useState(false);
@@ -68,12 +83,14 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Community features state
-  const [comments, setComments] = useState<any[]>([]);
+  const [comments, setComments] = useState<ItineraryComment[]>([]);
+  const [commentsError, setCommentsError] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isSavedToTrips, setIsSavedToTrips] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Export dropdown state
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -93,41 +110,58 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
   useEffect(() => {
     if (itinerary) {
       setLocalItinerary(JSON.parse(JSON.stringify(itinerary))); // Deep clone
-      setLikeCount(itinerary.likes || 0);
     }
   }, [itinerary]);
+
+  useEffect(() => {
+    setLikeCount(itinerary?.likes || 0);
+  }, [itinerary?.id]);
 
   useEffect(() => {
     setIsSaved(false);
   }, [itinerary]);
 
-  // Fetch comments and user's like/save status
+  const isPersisted = isPersistedItineraryId(itinerary?.id);
+  const isOwner = Boolean(user && isPersisted && itinerary?.userId === user.id);
+
+  const promptLogin = (message: string) => {
+    showToast('warning', message);
+    onRequireAuth();
+  };
+
+  // Fetch comments and the signed-in user's like/save status.
+  // Generated drafts use ids like `temp-…`, which are not rows yet.
   useEffect(() => {
-    if (itinerary?.id) {
-      fetchComments();
-      if (user) {
-        fetchUserInteractions();
-      }
+    if (!isPersistedItineraryId(itinerary?.id)) {
+      setComments([]);
+      setCommentsError(false);
+      setIsLiked(false);
+      setIsSavedToTrips(false);
+      return;
+    }
+    fetchComments();
+    if (user) {
+      fetchUserInteractions();
+    } else {
+      setIsLiked(false);
+      setIsSavedToTrips(false);
     }
   }, [itinerary?.id, user]);
 
   const fetchComments = async () => {
-    if (!itinerary?.id) return;
-    const { data, error } = await supabase
-      .from('comments')
-      .select(`
-        *,
-        profiles:user_id (
-          id,
-          full_name,
-          avatar_url
-        )
-      `)
-      .eq('itinerary_id', itinerary.id)
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      setComments(data);
+    if (!isPersistedItineraryId(itinerary?.id)) {
+      setComments([]);
+      setCommentsError(false);
+      return;
+    }
+    try {
+      const rows = await loadItineraryComments(itinerary.id);
+      setComments(rows);
+      setCommentsError(false);
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      setCommentsError(true);
+      showToast('error', t.comments_load_error);
     }
   };
 
@@ -151,37 +185,31 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
     setIsSavedToTrips(!!saveData);
   };
 
+  const requirePersisted = () => {
+    if (!isPersistedItineraryId(itinerary?.id)) {
+      showToast('info', t.save_before_share);
+      return false;
+    }
+    return true;
+  };
+
   const handlePostComment = async () => {
-    if (!user || !itinerary?.id || !newComment.trim()) return;
+    if (!user) {
+      promptLogin(t.login_to_comment);
+      return;
+    }
+    if (!itinerary?.id || !newComment.trim()) return;
+    if (!requirePersisted()) return;
 
     setIsPostingComment(true);
     try {
-      const { data, error } = await supabase
-        .from('comments')
-        .insert({
-          itinerary_id: itinerary.id,
-          user_id: user.id,
-          content: newComment.trim()
-        })
-        .select(`
-          *,
-          profiles:user_id (
-            id,
-            full_name,
-            avatar_url
-          )
-        `)
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        setComments(prev => [data, ...prev]);
-        setNewComment('');
-      }
+      const created = await createItineraryComment(itinerary.id, user.id, newComment.trim());
+      setComments(prev => [created, ...prev]);
+      setCommentsError(false);
+      setNewComment('');
     } catch (error) {
       console.error('Error posting comment:', error);
-      alert(t.comment_error || 'Failed to post comment');
+      showToast('error', t.comment_error || 'Failed to post comment');
     } finally {
       setIsPostingComment(false);
     }
@@ -189,70 +217,83 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
 
   const handleLikeToggle = async () => {
     if (!user) {
-      alert(t.login_to_comment);
+      promptLogin(t.login_to_like);
       return;
     }
-    if (!itinerary?.id) return;
+    if (!itinerary?.id || !requirePersisted()) return;
 
-    if (isLiked) {
-      // Delete the like record - trigger will auto-decrement count
-      await supabase
-        .from('itinerary_likes')
-        .delete()
-        .match({ user_id: user.id, itinerary_id: itinerary.id });
-      setIsLiked(false);
-      setLikeCount(prev => Math.max(0, prev - 1));
-    } else {
-      // Insert like record - trigger will auto-increment count
-      await supabase
-        .from('itinerary_likes')
-        .insert({ user_id: user.id, itinerary_id: itinerary.id });
-      setIsLiked(true);
-      setLikeCount(prev => prev + 1);
+    try {
+      if (isLiked) {
+        const removed = await removeItineraryLike(user.id, itinerary.id);
+        if (!removed) return;
+        setIsLiked(false);
+        setLikeCount(prev => Math.max(0, prev - 1));
+      } else {
+        await addItineraryLike(user.id, itinerary.id);
+        setIsLiked(true);
+        setLikeCount(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      showToast('error', t.like_error);
     }
   };
 
   const handleSaveToTripsToggle = async () => {
     if (!user) {
-      alert(t.login_to_save);
+      promptLogin(t.login_to_save);
       return;
     }
-    if (!itinerary) return;
+    if (!itinerary || !requirePersisted()) return;
 
     try {
       if (isSavedToTrips) {
-        // Remove from saved
-        const { error } = await supabase
-          .from('itinerary_saves')
-          .delete()
-          .match({ user_id: user.id, itinerary_id: itinerary.id });
-
-        if (error) throw error;
-
+        await removeItinerarySave(user.id, itinerary.id);
         setIsSavedToTrips(false);
-        alert(t.removed_from_saved || 'Removed from saved trips');
+        showToast('success', t.removed_from_saved || 'Removed from saved trips');
       } else {
-        // Add to saved
-        const { error } = await supabase
-          .from('itinerary_saves')
-          .insert({ user_id: user.id, itinerary_id: itinerary.id });
-
-        if (error) throw error;
-
+        await addItinerarySave(user.id, itinerary.id);
         setIsSavedToTrips(true);
-        alert(t.saved_success || 'Saved to your trips!');
+        showToast('success', t.saved_success || 'Saved to your trips!');
       }
     } catch (error) {
       console.error('Error toggling save:', error);
-      alert(t.save_error || 'Failed to save itinerary');
+      showToast('error', t.save_error || 'Failed to save itinerary');
+    }
+  };
+
+  const handlePublishToggle = async () => {
+    if (!user || !itinerary || !isOwner) return;
+    setIsPublishing(true);
+    const next = !itinerary.isPublic;
+    try {
+      const isPublic = await setItineraryPublished(itinerary.id, user.id, next);
+      const base = isEditMode && localItinerary ? localItinerary : itinerary;
+      const updated = { ...base, isPublic };
+      setLocalItinerary(updated);
+      onSave(updated);
+      showToast('success', isPublic ? t.publish_success : t.unpublish_success);
+    } catch (error) {
+      console.error('Error updating publish status:', error);
+      showToast('error', t.publish_error);
+    } finally {
+      setIsPublishing(false);
     }
   };
 
   if (!itinerary) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <h2 className="text-2xl font-bold mb-4 dark:text-white">{t.no_itinerary}</h2>
-        <button onClick={() => onNavigate('home')} className="text-primary hover:underline">{t.go_home}</button>
+      <div className="max-w-3xl mx-auto px-4 py-16">
+        <EmptyState
+          icon="travel_explore"
+          title={t.itinerary_unavailable_title || t.no_itinerary}
+          description={t.itinerary_unavailable_desc}
+          actionLabel={t.go_home}
+          actionIcon="home"
+          onAction={() => onNavigate('home')}
+          secondaryActionLabel={t.nav_explore}
+          onSecondaryAction={() => onNavigate('explore')}
+        />
       </div>
     );
   }
@@ -405,7 +446,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
 
   const handleSave = async () => {
     if (!user) {
-      alert("Please sign in to save itineraries.");
+      promptLogin(t.login_required_save || 'Please sign in to save itineraries.');
       return;
     }
 
@@ -458,7 +499,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
       onSave(savedItinerary); // Callback to update parent state with new ID
     } catch (error) {
       console.error("Error saving itinerary:", error);
-      alert("Failed to save itinerary.");
+      showToast('error', t.save_error || 'Failed to save itinerary.');
     } finally {
       setIsSaving(false);
     }
@@ -487,6 +528,11 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
               <span className="bg-white/10 text-white border border-white/20 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur-md">
                 {itinerary.days.length} {t.days_count}
               </span>
+              {isOwner && (
+                <span className={`text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur-md ${itinerary.isPublic ? 'bg-green-500/90 text-white' : 'bg-black/50 text-white border border-white/20'}`}>
+                  {itinerary.isPublic ? t.published_status : t.private_status}
+                </span>
+              )}
             </div>
             <h1 className="text-4xl md:text-5xl font-black text-white leading-tight shadow-sm">
               {itinerary.title}
@@ -505,13 +551,17 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
         {/* Action Buttons */}
         <div className="absolute top-6 right-6 flex gap-3 z-20">
           <button
+            type="button"
             onClick={handleLikeToggle}
+            aria-label={user ? t.like : t.login_to_like}
             className={`size-10 rounded-full backdrop-blur-md flex items-center justify-center transition-colors ${isLiked ? 'bg-red-500 text-white' : 'bg-white/10 text-white hover:bg-primary'}`}
           >
             <span className={`material-symbols-outlined text-[20px] ${isLiked ? 'fill-1' : ''}`}>favorite</span>
           </button>
           <button
+            type="button"
             onClick={handleSaveToTripsToggle}
+            aria-label={user ? (isSavedToTrips ? t.saved_to_my_trips : t.save_to_my_trips) : t.login_to_save}
             className={`size-10 rounded-full backdrop-blur-md flex items-center justify-center transition-colors ${isSavedToTrips ? 'bg-primary text-white' : 'bg-white/10 text-white hover:bg-white hover:text-slate-900'}`}
             title={isSavedToTrips ? t.saved_to_my_trips : t.save_to_my_trips}
           >
@@ -744,6 +794,31 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
             <div className="sticky top-24 space-y-6">
               {/* Actions Card */}
               <div className="bg-white dark:bg-card-dark border border-gray-100 dark:border-[#2a2e35] rounded-xl p-6 shadow-lg">
+                {isOwner && (
+                  <div className="mb-4 rounded-xl border border-gray-200 dark:border-[#2a2e35] bg-gray-50 dark:bg-[#25282e] p-4">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">{t.visibility}</span>
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${itinerary.isPublic ? 'bg-green-500 text-white' : 'bg-slate-200 dark:bg-[#32363e] text-slate-700 dark:text-gray-200'}`}>
+                        {itinerary.isPublic ? t.published_status : t.private_status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-gray-300 leading-relaxed mb-3">
+                      {itinerary.isPublic ? t.unpublish_hint : t.publish_hint}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handlePublishToggle}
+                      disabled={isPublishing}
+                      className={`w-full font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${itinerary.isPublic ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 dark:text-amber-200' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+                    >
+                      <span className={`material-symbols-outlined text-[20px] ${isPublishing ? 'animate-spin' : ''}`}>{isPublishing ? 'progress_activity' : itinerary.isPublic ? 'unpublished' : 'public'}</span>
+                      {itinerary.isPublic ? t.unpublish : t.publish_to_explore}
+                    </button>
+                  </div>
+                )}
+                {user && !isPersisted && (
+                  <p className="text-sm text-slate-500 dark:text-gray-400 mb-4">{t.publish_requires_save}</p>
+                )}
                 <button onClick={handleSave} disabled={isSaved} className={`w-full font-bold py-3.5 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 mb-4 group ${isSaved ? 'bg-green-600 text-white cursor-default' : 'bg-primary hover:bg-primary-hover text-white shadow-primary/20'}`}>
                   <span className={`material-symbols-outlined ${!isSaved && 'group-hover:animate-bounce'}`}>{isSaved ? 'check' : 'bookmark_add'}</span>
                   {isSaved ? t.saved : t.save_trip}
@@ -770,14 +845,18 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
 
                 <div className="grid grid-cols-2 gap-3">
                   <button
+                    type="button"
                     onClick={handleLikeToggle}
+                    aria-label={user ? t.like : t.login_to_like}
                     className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border transition-colors font-bold text-sm ${isLiked ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-500' : 'border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300'}`}
                   >
                     <span className={`material-symbols-outlined text-[20px] ${isLiked ? 'fill-1 text-red-500' : 'text-red-500'}`}>favorite</span>
                     {likeCount > 0 ? likeCount : t.like}
                   </button>
                   <button
+                    type="button"
                     onClick={handleSaveToTripsToggle}
+                    aria-label={user ? (isSavedToTrips ? t.saved_to_my_trips : t.save_to_my_trips) : t.login_to_save}
                     className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border transition-colors font-bold text-sm ${isSavedToTrips ? 'bg-primary/10 border-primary/30 text-primary' : 'border-gray-200 dark:border-[#2a2e35] hover:bg-gray-50 dark:hover:bg-[#2a2e35] text-slate-700 dark:text-gray-300'}`}
                   >
                     <span className={`material-symbols-outlined text-[20px] ${isSavedToTrips ? 'fill-1' : ''}`}>bookmark</span>
@@ -847,7 +926,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
           </h3>
 
           {/* Comment Input */}
-          {user ? (
+          {user && isPersisted ? (
             <div className="flex gap-4 mb-8">
               <img
                 src={user.user_metadata?.avatar_url || `https://i.pravatar.cc/150?u=${user.id}`}
@@ -874,15 +953,38 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, t }: It
                 </div>
               </div>
             </div>
+          ) : user ? (
+            <div className="text-center py-6 bg-gray-50 dark:bg-[#25282e] rounded-xl mb-8">
+              <p className="text-slate-500 dark:text-gray-400">{t.publish_requires_save}</p>
+            </div>
           ) : (
             <div className="text-center py-6 bg-gray-50 dark:bg-[#25282e] rounded-xl mb-8">
-              <p className="text-slate-500 dark:text-gray-400">{t.login_to_comment || 'Sign in to leave a comment'}</p>
+              <p className="text-slate-600 dark:text-gray-300 mb-3">{t.login_to_comment}</p>
+              <button
+                type="button"
+                onClick={onRequireAuth}
+                className="px-5 py-2.5 bg-primary hover:bg-primary-hover text-white font-bold rounded-xl transition-colors"
+              >
+                {t.sign_in}
+              </button>
             </div>
           )}
 
           {/* Comments List */}
           <div className="space-y-6">
-            {comments.length === 0 ? (
+            {commentsError ? (
+              <div className="text-center py-8">
+                <span className="material-symbols-outlined text-4xl text-red-400 mb-2">error</span>
+                <p className="text-slate-600 dark:text-gray-300 mb-4">{t.comments_load_error}</p>
+                <button
+                  type="button"
+                  onClick={() => { void fetchComments(); }}
+                  className="px-5 py-2.5 bg-gray-100 dark:bg-[#2a2e35] hover:bg-gray-200 dark:hover:bg-[#353a42] text-slate-700 dark:text-gray-200 font-bold rounded-xl transition-colors"
+                >
+                  {t.retry}
+                </button>
+              </div>
+            ) : comments.length === 0 ? (
               <div className="text-center py-8">
                 <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">chat_bubble_outline</span>
                 <p className="text-slate-500 dark:text-gray-400">{t.no_comments || 'No comments yet. Be the first to comment!'}</p>

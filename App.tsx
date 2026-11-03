@@ -9,7 +9,7 @@ import { Itinerary } from './types';
 import { translations, Language } from './translations';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
-import { ToastProvider } from './components/Toast';
+import { ToastProvider, useToast } from './components/Toast';
 import { supabase } from './lib/supabase';
 
 // Simple Navigation Context type
@@ -24,6 +24,7 @@ function AppContent() {
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   const { user, signOut } = useAuth();
+  const { showToast } = useToast();
   const t = translations[language];
 
   // Parse URL on initial load for shared links
@@ -41,7 +42,7 @@ function AppContent() {
             .from('itineraries')
             .select('*')
             .eq('id', itineraryId)
-            .single();
+            .maybeSingle();
 
           if (data && !error) {
             const itinerary: Itinerary = {
@@ -57,9 +58,17 @@ function AppContent() {
             };
             setSelectedItinerary(itinerary);
             setCurrentView('itinerary');
+          } else {
+            if (error) console.error('Shared itinerary is unavailable:', error);
+            setSelectedItinerary(null);
+            setCurrentView('itinerary');
+            showToast('error', t.itinerary_unavailable_desc);
           }
         } catch (err) {
           console.error('Error loading shared itinerary:', err);
+          setSelectedItinerary(null);
+          setCurrentView('itinerary');
+          showToast('error', t.itinerary_unavailable_desc);
         } finally {
           setIsLoadingSharedItinerary(false);
         }
@@ -128,7 +137,7 @@ function AppContent() {
       case 'home':
         return <Home onNavigate={navigate} lang={language} t={t} />;
       case 'explore':
-        return <Explore onNavigate={navigate} t={t} />;
+        return <Explore onNavigate={navigate} onRequireAuth={() => setIsAuthModalOpen(true)} t={t} />;
       case 'my-trips':
         return <MyItineraries
           onNavigate={navigate}
@@ -139,7 +148,7 @@ function AppContent() {
       case 'manual-create':
         return <ManualItineraryCreator onNavigate={navigate} t={t} />;
       case 'itinerary':
-        return <ItineraryDetail itinerary={selectedItinerary} onNavigate={navigate} t={t} onSave={handleSaveItinerary} />;
+        return <ItineraryDetail itinerary={selectedItinerary} onNavigate={navigate} t={t} onSave={handleSaveItinerary} onRequireAuth={() => setIsAuthModalOpen(true)} />;
       default:
         return <Home onNavigate={navigate} lang={language} t={t} />;
     }

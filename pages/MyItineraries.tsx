@@ -3,8 +3,10 @@ import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SkeletonGrid } from '../components/Skeleton';
-import { NoTripsEmptyState, NoSavedTripsEmptyState, NoSearchResultsEmptyState } from '../components/EmptyState';
+import { EmptyState, NoTripsEmptyState, NoSavedTripsEmptyState, NoSearchResultsEmptyState } from '../components/EmptyState';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
+import { setItineraryPublished } from '../services/community';
 
 interface MyItinerariesProps {
   onNavigate: (view: any, data?: any) => void;
@@ -15,10 +17,13 @@ type Tab = 'upcoming' | 'past' | 'favorites';
 
 export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>('upcoming');
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
   const [savedItineraries, setSavedItineraries] = useState<Itinerary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingTrip, setEditingTrip] = useState<Itinerary | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -41,6 +46,7 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
 
     try {
       setLoading(true);
+      setLoadError(false);
 
       // Fetch owned itineraries
       const { data: ownedData, error: ownedError } = await supabase
@@ -111,6 +117,8 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
 
     } catch (error) {
       console.error('Error fetching itineraries:', error);
+      setLoadError(true);
+      showToast('error', t.my_trips_load_error);
     } finally {
       setLoading(false);
     }
@@ -204,22 +212,21 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
   const handlePublishToggle = async (e: React.MouseEvent, trip: Itinerary) => {
     e.stopPropagation();
     setOpenMenuId(null);
+    if (!user || publishingId) return;
 
+    const next = !trip.isPublic;
+    setPublishingId(trip.id);
     try {
-      const newStatus = !trip.isPublic;
-      const { error } = await supabase
-        .from('itineraries')
-        .update({ is_public: newStatus })
-        .eq('id', trip.id);
-
-      if (error) throw error;
-
+      const isPublic = await setItineraryPublished(trip.id, user.id, next);
       setItineraries(prev => prev.map(i =>
-        i.id === trip.id ? { ...i, isPublic: newStatus } : i
+        i.id === trip.id ? { ...i, isPublic } : i
       ));
+      showToast('success', isPublic ? t.publish_success : t.unpublish_success);
     } catch (error) {
       console.error('Error updating publish status:', error);
-      alert('Failed to update status');
+      showToast('error', t.publish_error);
+    } finally {
+      setPublishingId(null);
     }
   };
 
@@ -439,7 +446,16 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
         </div>
       </div>
 
-      {displayItineraries.length === 0 ? (
+      {loadError && itineraries.length === 0 && savedItineraries.length === 0 ? (
+        <EmptyState
+          icon="cloud_off"
+          title={t.my_trips_load_error}
+          description={t.explore_load_error}
+          actionLabel={t.retry}
+          actionIcon="refresh"
+          onAction={() => { void fetchItineraries(); }}
+        />
+      ) : displayItineraries.length === 0 ? (
         searchQuery ? (
           <NoSearchResultsEmptyState query={searchQuery} onClear={() => setSearchQuery('')} />
         ) : activeTab === 'favorites' ? (
@@ -570,7 +586,20 @@ export default function MyItineraries({ onNavigate, t }: MyItinerariesProps) {
                     <span className="px-2 py-1 bg-gray-100 dark:bg-[#2a2e35] text-slate-600 dark:text-gray-300 text-xs font-bold rounded">#Trip</span>
                   )}
                 </div>
-                <div className="mt-auto">
+                <div className="mt-auto flex flex-col gap-2">
+                  {activeTab !== 'favorites' && (
+                    <button
+                      type="button"
+                      onClick={(e) => handlePublishToggle(e, trip)}
+                      disabled={publishingId === trip.id}
+                      className={`w-full flex items-center justify-center gap-2 font-bold py-2.5 rounded-lg border transition-all disabled:opacity-60 ${trip.isPublic ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200 dark:hover:bg-amber-900/40' : 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100 dark:border-green-700/60 dark:bg-green-900/20 dark:text-green-200 dark:hover:bg-green-900/40'}`}
+                    >
+                      <span className={`material-symbols-outlined text-[18px] ${publishingId === trip.id ? 'animate-spin' : ''}`}>
+                        {publishingId === trip.id ? 'progress_activity' : trip.isPublic ? 'unpublished' : 'public'}
+                      </span>
+                      {trip.isPublic ? t.unpublish : t.publish_to_explore}
+                    </button>
+                  )}
                   <button
                     onClick={() => onNavigate('itinerary', trip)}
                     className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary text-primary hover:text-white font-bold py-2.5 rounded-lg transition-all duration-200"

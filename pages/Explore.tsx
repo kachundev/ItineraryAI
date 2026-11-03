@@ -3,11 +3,13 @@ import { Itinerary } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SkeletonExploreGrid } from '../components/Skeleton';
-import { NoSearchResultsEmptyState, NoCommunityTripsEmptyState } from '../components/EmptyState';
+import { EmptyState, NoSearchResultsEmptyState, NoCommunityTripsEmptyState } from '../components/EmptyState';
 import { useToast } from '../components/Toast';
+import { addItineraryLike, addItinerarySave, removeItineraryLike, removeItinerarySave } from '../services/community';
 
 interface ExploreProps {
   onNavigate: (view: any, data?: any) => void;
+  onRequireAuth: () => void;
   t: any;
 }
 
@@ -15,11 +17,12 @@ type SortCategory = 'trending' | 'newest' | 'top-rated';
 
 const ITEMS_PER_PAGE = 9;
 
-export default function Explore({ onNavigate, t }: ExploreProps) {
+export default function Explore({ onNavigate, onRequireAuth, t }: ExploreProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,35 +95,39 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
   useEffect(() => {
     if (user) {
       fetchUserSavesAndLikes();
+    } else {
+      setSavedIds(new Set());
+      setLikedIds(new Set());
     }
   }, [user]);
+
+  const promptLogin = (message: string) => {
+    showToast('warning', message);
+    onRequireAuth();
+  };
 
   const fetchUserSavesAndLikes = async () => {
     if (!user) return;
 
-    const { data: saves } = await supabase
-      .from('itinerary_saves')
-      .select('itinerary_id')
-      .eq('user_id', user.id);
+    const [savesResult, likesResult] = await Promise.all([
+      supabase.from('itinerary_saves').select('itinerary_id').eq('user_id', user.id),
+      supabase.from('itinerary_likes').select('itinerary_id').eq('user_id', user.id),
+    ]);
 
-    if (saves) {
-      setSavedIds(new Set(saves.map(s => s.itinerary_id)));
+    if (savesResult.error || likesResult.error) {
+      console.error('Error loading saves or likes:', savesResult.error || likesResult.error);
+      showToast('error', t.my_trips_load_error);
+      return;
     }
 
-    const { data: likes } = await supabase
-      .from('itinerary_likes')
-      .select('itinerary_id')
-      .eq('user_id', user.id);
-
-    if (likes) {
-      setLikedIds(new Set(likes.map(l => l.itinerary_id)));
-    }
+    setSavedIds(new Set((savesResult.data ?? []).map(s => s.itinerary_id)));
+    setLikedIds(new Set((likesResult.data ?? []).map(l => l.itinerary_id)));
   };
 
   const handleSaveToggle = async (e: React.MouseEvent, itinerary: Itinerary) => {
     e.stopPropagation();
     if (!user) {
-      showToast(t.login_to_save, 'warning');
+      promptLogin(t.login_to_save);
       return;
     }
 
@@ -128,75 +135,62 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
 
     try {
       if (isSaved) {
-        // Remove from saved
-        const { error } = await supabase
-          .from('itinerary_saves')
-          .delete()
-          .match({ user_id: user.id, itinerary_id: itinerary.id });
-
-        if (error) throw error;
-
+        await removeItinerarySave(user.id, itinerary.id);
         setSavedIds(prev => {
           const next = new Set(prev);
           next.delete(itinerary.id);
           return next;
         });
-        showToast(t.removed_from_saved || 'Removed from saved trips', 'success');
+        showToast('success', t.removed_from_saved || 'Removed from saved trips');
       } else {
-        // Add to saved
-        const { error } = await supabase
-          .from('itinerary_saves')
-          .insert({ user_id: user.id, itinerary_id: itinerary.id });
-
-        if (error) throw error;
-
+        await addItinerarySave(user.id, itinerary.id);
         setSavedIds(prev => new Set(prev).add(itinerary.id));
-        showToast(t.saved_success || 'Saved to your trips!', 'success');
+        showToast('success', t.saved_success || 'Saved to your trips!');
       }
     } catch (error) {
       console.error('Error toggling save:', error);
-      showToast(t.save_error || 'Failed to save itinerary', 'error');
+      showToast('error', t.save_error || 'Failed to save itinerary');
     }
   };
 
   const handleLikeToggle = async (e: React.MouseEvent, itineraryId: string) => {
     e.stopPropagation();
     if (!user) {
-      showToast(t.login_to_comment, 'warning');
+      promptLogin(t.login_to_like);
       return;
     }
 
     const isLiked = likedIds.has(itineraryId);
 
-    if (isLiked) {
-      await supabase
-        .from('itinerary_likes')
-        .delete()
-        .match({ user_id: user.id, itinerary_id: itineraryId });
-      setLikedIds(prev => {
-        const next = new Set(prev);
-        next.delete(itineraryId);
-        return next;
-      });
-      setItineraries(prev => prev.map(it =>
-        it.id === itineraryId ? { ...it, likes: Math.max(0, (it.likes || 0) - 1) } : it
-      ));
-      await supabase.rpc('decrement_likes', { itinerary_id: itineraryId });
-    } else {
-      await supabase
-        .from('itinerary_likes')
-        .insert({ user_id: user.id, itinerary_id: itineraryId });
-      setLikedIds(prev => new Set(prev).add(itineraryId));
-      setItineraries(prev => prev.map(it =>
-        it.id === itineraryId ? { ...it, likes: (it.likes || 0) + 1 } : it
-      ));
-      await supabase.rpc('increment_likes', { itinerary_id: itineraryId });
+    try {
+      if (isLiked) {
+        const removed = await removeItineraryLike(user.id, itineraryId);
+        if (!removed) return;
+        setLikedIds(prev => {
+          const next = new Set(prev);
+          next.delete(itineraryId);
+          return next;
+        });
+        setItineraries(prev => prev.map(it =>
+          it.id === itineraryId ? { ...it, likes: Math.max(0, (it.likes || 0) - 1) } : it
+        ));
+      } else {
+        await addItineraryLike(user.id, itineraryId);
+        setLikedIds(prev => new Set(prev).add(itineraryId));
+        setItineraries(prev => prev.map(it =>
+          it.id === itineraryId ? { ...it, likes: (it.likes || 0) + 1 } : it
+        ));
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      showToast('error', t.like_error);
     }
   };
 
   const fetchPublicItineraries = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const { data, error } = await supabase
         .from('itineraries')
         .select(`
@@ -233,6 +227,8 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
       }
     } catch (error) {
       console.error('Error fetching public itineraries:', error);
+      setLoadError(true);
+      showToast('error', t.explore_load_error);
     } finally {
       setLoading(false);
     }
@@ -339,6 +335,15 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
 
           {loading ? (
             <SkeletonExploreGrid count={6} />
+          ) : loadError && itineraries.length === 0 ? (
+            <EmptyState
+              icon="cloud_off"
+              title={t.explore_load_error_title}
+              description={t.explore_load_error}
+              actionLabel={t.retry}
+              actionIcon="refresh"
+              onAction={() => { void fetchPublicItineraries(); }}
+            />
           ) : filteredItineraries.length === 0 ? (
             searchQuery ? (
               <NoSearchResultsEmptyState query={searchQuery} onClear={() => setSearchQuery('')} />
@@ -381,6 +386,8 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
                       </div>
                       <div className="ml-auto flex items-center gap-3 text-slate-400 dark:text-gray-500">
                         <button
+                          type="button"
+                          aria-label={user ? t.like : t.login_to_like}
                           className={`flex items-center gap-1 transition-colors group/heart ${likedIds.has(item.id) ? 'text-red-500' : 'hover:text-red-500'}`}
                           onClick={(e) => handleLikeToggle(e, item.id)}
                         >
@@ -388,6 +395,8 @@ export default function Explore({ onNavigate, t }: ExploreProps) {
                           <span className="text-xs font-medium">{item.likes || 0}</span>
                         </button>
                         <button
+                          type="button"
+                          aria-label={savedIds.has(item.id) ? t.saved_to_my_trips : t.save_to_my_trips}
                           className={`flex items-center justify-center transition-colors ${savedIds.has(item.id) ? 'text-primary' : 'hover:text-primary'}`}
                           onClick={(e) => handleSaveToggle(e, item)}
                           title={savedIds.has(item.id) ? t.saved_to_my_trips : t.save_to_my_trips}

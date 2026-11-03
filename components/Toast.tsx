@@ -22,8 +22,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
     const showToast = useCallback((type: ToastMessage['type'], message: string) => {
-        const id = Date.now().toString();
-        setToasts(prev => [...prev, { id, type, message }]);
+        setToasts(prev => {
+            if (prev.some(toast => toast.type === type && toast.message === message)) return prev;
+            return [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, type, message }];
+        });
     }, []);
 
     const removeToast = useCallback((id: string) => {

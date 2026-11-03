@@ -5,6 +5,7 @@ interface EmptyStateProps {
     title: string;
     description: string;
     actionLabel?: string;
+    actionIcon?: string;
     onAction?: () => void;
     secondaryActionLabel?: string;
     onSecondaryAction?: () => void;
@@ -15,6 +16,7 @@ export function EmptyState({
     title,
     description,
     actionLabel,
+    actionIcon = 'add',
     onAction,
     secondaryActionLabel,
     onSecondaryAction,
@@ -38,7 +40,7 @@ export function EmptyState({
                         onClick={onAction}
                         className="px-8 py-3 bg-primary hover:bg-primary-hover text-white font-bold rounded-xl transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
                     >
-                        <span className="material-symbols-outlined text-[20px]">add</span>
+                        <span className="material-symbols-outlined text-[20px]">{actionIcon}</span>
                         {actionLabel}
                     </button>
                 )}

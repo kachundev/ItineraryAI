@@ -803,7 +803,7 @@ export default function ItineraryDetail({ itinerary, onNavigate, onSave, onRequi
                       </span>
                     </div>
                     <p className="text-sm text-slate-600 dark:text-gray-300 leading-relaxed mb-3">
-                      {itinerary.isPublic ? t.unpublish_hint : t.publish_hint}
+                      {itinerary.isPublic ? t.publish_hint : t.unpublish_hint}
                     </p>
                     <button
                       type="button"
